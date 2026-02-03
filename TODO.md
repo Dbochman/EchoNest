@@ -1,0 +1,2 @@
+- make a taste profile for jams (same as with plays, have one for everyone and one for each user)
+- fix up the UI to match Glue guidelines (consistent look w/ other apps)
