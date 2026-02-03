@@ -1,0 +1,316 @@
+{% extends "base.html"%}
+{% block body %}
+<div id="page-container">
+    <div id="body">
+        <div id="left">
+            <div id="progress-wrapper">
+                <div id="playing-progress"></div>
+            </div>
+            <div id="now-playing-album">
+            </div>
+            <div id="left-col-menu"
+                class="flat-menu"><a href="javascript:void(0);"
+                    class="menu-item active"
+                data-id="airhorn">Airhorn</a><a href="javascript:void(0);"
+                    class="menu-item"
+                data-id="add-song">Search</a>
+
+                <!--<a href="javascript:void(0);"
+                    class="menu-item"
+                data-id="search-song">QBD</a>-->
+
+                <!--a href="javascript:void(0);"
+                    class="menu-item" data-id="volume">Volume</a--><a
+                href="javascript:void(0);" class="menu-item"
+                            data-id="other">Other</a></div>
+            <div id="tabs">
+                <div id="airhorn-tab" class="visible">
+                    <a href="javascript:void(0);" id="do-airhorn" class="left-button">airhorn</a>
+                    <a href="javascript:void(0);" id="do-free-airhorn" class="left-button">free airhorn</a>
+                    <div id="airhorn-history">
+                    </div>
+                </div>
+                <div id="add-song-tab">
+                    <form id="uri-search">
+                        <input type="text" placeholder="Search Text">
+                    </form>
+                    <div id="search-results">
+                        <div id="uri-help">
+                            <h4>Search Spotify, or paste a Spotify, SoundCloud, or YouTube URI here.</h4>
+                        </div>
+                        <div id="spotify-results">
+                        </div>
+                        <div id="youtube-results">
+                        </div>
+                        <div id="soundcloud-results">
+                        </div>
+                    </div>
+                </div>
+                <div id="search-song-tab">
+                    <form id="song-search">
+                        <input type="text" placeholder="Search Text">
+                    </form>
+                    <div id="qbd-search-results">
+                        <div id="talkie-help">
+                            <h4>Hi, I'm your new intelligent Prosecco assistant. You can ask for things like genres, moods, and other descriptors. My name's QBD and I'm a BFD.</h4>
+                        </div>
+                        <div id="qbd-results">
+                        </div>
+                    </div>
+                </div>
+
+
+                <div id="volume-tab">
+                    <h4>Coming Soon!</h4>
+                </div>
+                <div id="other-tab">
+                    <a href="javascript:void(0);" id="make-player" class="left-button">play music here (no youtube)</a>
+                    <a href="javascript:void(0);" id="change-color" class="left-button">change
+                        colors</a>
+                    <a href="javascript:void(0);" id="feel-shame" class="left-button">hide shame</a>
+                    <a href="javascript:void(0);" id="kill-playing" class="left-button">skip playing song</a>
+                    <a href="javascript:void(0);" id="mute-all" class="left-button">mute all</a>
+                    <a href="javascript:void(0);" id="do-nuke-queue" class="left-button">clear queue</a>
+                    <a href="javascript:void(0);" id="pause-button" class="left-button">pause everything</a>
+                    <a href="/logout/" class="left-button">log out {{session.email.split('@')[0]}}</a>
+                </div>
+            </div>
+        </div>
+        <div id="right">
+            <div id="top-row">
+                <div id="now-playing-person"></div>
+                <div id="now-playing-text"></div>
+                <div id="now-playing-jammers"></div>
+            </div>
+            <div id="bottom-row">
+                <div id="queue">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script type="underscore/template" id="confirm_content">
+    <div id="confirm">
+        <h3><%-msg%></h3>
+        <% if(callback){ %>
+        <a href="javascript:void(0)" class="yes">Yes</a>
+        <a href="javascript:void(0)" class="no">No</a>
+        <% }else{ %>
+        <a href="javascript:void(0)" class="alert-close">Close</a>
+        <% } %>
+    </div>
+</script>
+<script type="underscore/template" id="confirm_airhorn">
+    <div id="confirm">
+        <h3><%-msg%></h3>
+        <select id="airhorn-dropdown">
+          <% _.each(airhorns, function (airhorn, i) { %>
+            <option><%- airhorn %></option>
+          <% }); %>
+        </select>
+        <% if(callback){ %>
+        <a href="javascript:void(0)" class="yes">Yes</a>
+        <a href="javascript:void(0)" class="no">No</a>
+        <% }else{ %>
+        <a href="javascript:void(0)" class="alert-close">Close</a>
+        <% } %>
+    </div>
+</script>
+<script type="underscore/template" id="search_no_results">
+    <div class="search-result search-item">
+        <div class="text"><h4>Sorry, I couldn't find anything to show you. I thought your intent was <%=intent%><h4></div>
+    </div>
+</script>
+<script type="underscore/template" id="search_result_spotify">
+    <div class="search-result search-item" data-key="<%-uri%>" data-src="spotify">
+        <div class="icon" <% if (album.images.length > 0) { console.log(album.images[album.images.length-1].url); %>style="background-image:url(<%=album.images[album.images.length-1].url%>)" <% } %>></div>
+        <div class="text"><h4><%=name%></h4><h5><%=artists.map(function(a){return a.name;}).join(", ")%></h5><h6><%=seconds_to_time(Math.floor(duration_ms/1000))%> from Spotify</h6></div>
+    </div>
+</script>
+<script type="underscore/template" id="search_result_youtube">
+    <div class="search-result search-item" data-key="<%-id%>" data-src="youtube">
+         <div class="icon" style="background-image:url(<%-snippet.thumbnails.default.url%>)"></div>
+         <div class="text"><h4><%=snippet.title%></h4><h5><%=snippet.channelTitle%></h5><h6><%=yt_duration_to_time(contentDetails.duration)%> from YouTube</h6></div>
+    </div>
+</script>
+<script type="underscore/template" id="search_result_soundcloud">
+    <div class="search-result search-item" data-key="<%-id%>" data-src="soundcloud">
+        <div class="icon" style="background-image:url(<%-artwork_url%>)"></div>
+        <div class="text"><h4><%=title%></h4><h6><%=seconds_to_time(Math.floor(duration/1000))%> from SoundCloud</h6></div>
+    </div>
+</script>
+<script type="underscore/template" id="search_result_playlist">
+    <div class="playlist-result search-item" data-key="<%-key%>" data-shuffled="no"><div class="icon" style="background-image:url(<%-icon%>)"></div><div class="text"><h4><%=name%></h4><h5><%=owner%></h5><h6><%=length%> items</h6></div></div>
+    <div class="playlist-result search-item" data-key="<%-key%>" data-shuffled="yes"><div class="icon" style="background-image:url(<%-icon%>)"></div><div class="text"><h4><%=name%> <em>(Shuffled)</em></h4><h5><%=owner%></h5><h6><%=length%> items</h6></div></div>
+</script>
+
+
+<script type="underscore/template" id="playlist_item">
+    <div class="queue-item">
+        <div class="queue-item-inner">
+            <div class="album-image"
+            style="background-image:url(<%-img%>);"></div>
+
+            <div class="queue-item-text">
+                <h3><%=title%></h3>
+                <h4><%=artist%> (<%=eta%>)</h4>
+            </div>
+
+            <div class="jammers">
+                <%_.each(jam, function(j){ %>
+                     <div title="<%-j.user%>"
+                     class="jammer"
+                     style="background-image:url(/userimg/<%-j.user%>/img.png)" >
+                     </div>
+                 <% }) %>
+             </div>
+
+             <div class="controls<%if(VOTED[id]){ %> voted<% } %>">
+                <table><tbody><tr>
+                    <td class="left-controls-col">
+                    <div class="comment-button" data-toggle="popover"
+                        data-song-id="<%= id %>">
+                            <div class="icon-comment"></div>
+                            <div><%= comments.length %></div>
+                        </div>
+                    </td>
+
+                    <td class="right-controls-col">
+                         <a href="javascript:void(0);" class="flat-button vote-up">Up</a>
+                         <a href="javascript:void(0);" class="flat-button vote-down">Down</a>
+                         <a href="javascript:void(0);" class="flat-button kill">Remove</a>
+                         <a href="javascript:void(0);" class="flat-button jam">Jam</a>
+                    </td>
+
+                </tr></tbody></table>
+             </div>
+
+             <div class="person-image" title="<%-user%>"
+             style="background-image:url(<%-FEEL_SHAME?shame_image(43,65):"/userimg/"+user+"/img.png"%>);"></div>
+        </div>
+    </div>
+</script>
+
+<script type="underscore/template" id="comments_popover">
+    <div class="comments-popover">
+        <input class="comment-input <%-inputClasses%>" type="text"
+            data-song-id="<%= songID %>"
+            placeholder="whaddya wanna say?" >
+        <div class="comment-list">
+            <% _.each(comments, function(comment){ %>
+                <div class="comment-item">
+                    <div>
+                        <img class="avatar" src="/userimg/<%-comment.user%>/img.png" title="<%-comment.user%>">
+                        <span class="time"><%= comment.time %></span>
+                        <span class="body"><%= comment.body %></span>
+                    </div>
+                </div>
+            <% }) %>
+        </div>
+    </div>
+</script>
+
+<script type="underscore/template" id="playlist_source">
+    <div class="queue-item">
+      <div class="queue-item-inner">
+	<div class="album-image" style="background-image:url(<%-img%>);"></div>
+	<div class="controls">
+	  <% if(dm_buttons) { %>
+	  <a href="javascript:void(0);" class="flat-button dm-join">Join</a>
+	  <a href="javascript:void(0);" class="flat-button dm-leave">Leave</a>
+	  <% }else{ %>
+	  <a href="javascript:void(0);" class="flat-button spotify-uri">Spotify</a>
+	  <a href="javascript:void(0);" class="flat-button queue">Queue</a>
+	  <a href="javascript:void(0);" class="flat-button filter">Filter</a>
+	  <% } %>
+	</div>
+	<div class="queue-item-text">
+	  <h3><%=title%></h3>
+	</div>
+        <div class="jammers">
+          <%_.each(jam, function(j){ %>
+          <div title="<%-j.user%>"
+               class="jammer"
+               style="background-image:url(/userimg/<%-j.user%>/img.png)" >
+          </div>
+          <% }) %>
+        </div>
+	<div class="person-image" style="background-image:url(<%-FEEL_SHAME?shame_image(43,65):"/userimg/"+user+"/img.png"%>);"></div>
+        </div>
+    </div>
+</script>
+
+
+<script type="underscore/template" id="now_playing">
+    <div id="now-playing-person"
+        style="background-image:url(<%-FEEL_SHAME?shame_image(180,270):"/userimg/"+user+"/img.png"%>);"
+        title="<%-user%>"></div>
+    <div id="now-playing-text">
+        <h1><%=title%></h1>
+        <h2><%=artist%></h2>
+        <%
+            var qer_comments = _.filter(comments, function(c) {
+                return user === c.user;
+            });
+            _.each(qer_comments, function(c){ %>
+                "<%=c.body%>"<br>
+            <% })
+        %>
+        <div class="comment-button" data-song-id="<%= id %>"
+            data-toggle="popover" data-in-now-playing="true">
+            <div class="icon-comment"></div>
+            <div><%= comments.length %></div>
+        </div>
+    </div>
+
+    <div id="playing-buttons">
+        <% if (src == 'spotify'){ %>
+        <a href="javascript:void(0)" class="spot" style="text-align:center;"><img
+                src="/static/green.png" width=20></img></a>
+        <% } else if (src=='youtube') { %>
+        <a href="javascript:void(0)" class="ytube" style="text-align:center;">
+           <i class="icon-youtube" aria-hidden="true"></i>
+        </a>
+        <% } else { %>
+        <a href="javascript:void(0)" class="cloud" style="">Cloud</a>
+        <% } %>
+        <a href="javascript:void(0)" class="jam" style="">Jam</a>
+    </div>
+
+    <div id="now-playing-jammers">
+        <% _.each(jam, function(j){ %>
+            <div class="bigjammer"
+                style="background-image:url(/userimg/<%-j.user%>/img.png)"
+                title="<%-j.user%>"></div>
+        <% }) %>
+    </div>
+</script>
+
+<script type="underscore/template" id="volume_chunk">
+    <div>
+        <label>Main</label>
+        <input type="range" min="1" max="100" value="<%=volume%>"
+             class="volume-slider">
+    </div>
+</script>
+
+<script type="underscore/template" id="horns">
+    <% _.each(horns, function(horn){ %>
+        <div class="airhorn <%if(horn.free){ %>free<% } %>">
+            <div class="airhorn-icon"
+                style="background-image:url(<%=horn.img%>);"></div>
+            <div class="airhorn-person" <%-FEEL_SHAME?"":"title="+horn.user%>
+                style="background-image:url(<%-FEEL_SHAME?shame_image(43,65):"/userimg/"+horn.user+"/img.png"%>);"
+            ></div>
+            <h3><%=horn.title%></h3>
+            <h4><%=horn.artist%></h4>
+            </div>
+        </div>
+    <% }) %>
+</script>
+
+<div id="bridge"></div>
+<div id="player"></div>
+<div id="html5audio"></div>
+
+{% endblock %}
