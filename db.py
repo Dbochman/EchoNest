@@ -904,9 +904,9 @@ class DB(object):
         color_string = ""
         color_sum = 0
         for i in range(3):
-            new_color = ((votes * other_color[i]) + ((steps - votes) * base_color[i])) / steps
+            new_color = ((votes * other_color[i]) + ((steps - votes) * base_color[i])) // steps
             color_sum += new_color
-            color_string += "{:02x}".format(new_color)
+            color_string += "{:02x}".format(int(new_color))
 
 
 
