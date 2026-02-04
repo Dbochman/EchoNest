@@ -12,4 +12,4 @@ github_deploy_key.pub
 node_modules/
 .idea/
 .helios/
-static/__MACOSX/
+static/__MACOSX/.cache

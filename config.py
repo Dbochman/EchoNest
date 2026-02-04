@@ -26,11 +26,13 @@ def get_config_filenames():
     return [os.path.abspath(f) for f in fnames]
 
 # Environment variable overrides (these take precedence over yaml files)
+# Note: HOSTNAME is intentionally excluded since Docker sets it to the container ID
 ENV_OVERRIDES = [
-    'REDIS_HOST', 'REDIS_PORT', 'DEBUG', 'SECRET_KEY', 'HOSTNAME',
+    'REDIS_HOST', 'REDIS_PORT', 'DEBUG', 'SECRET_KEY',
     'SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET',
     'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
-    'DEV_AUTH_EMAIL', 'YT_API_KEY', 'SOUNDCLOUD_CLIENT_ID'
+    'DEV_AUTH_EMAIL', 'YT_API_KEY', 'SOUNDCLOUD_CLIENT_ID',
+    'ANDRE_HOSTNAME'  # Use ANDRE_HOSTNAME instead to avoid Docker conflict
 ]
 
 def __read_conf(*files):
@@ -64,8 +66,10 @@ def __read_conf(*files):
                     env_val = int(env_val)
                 except ValueError:
                     pass
-            setattr(CONF, key, env_val)
-            logger.debug('Override from env: {0}={1}'.format(key, env_val))
+            # Map ANDRE_HOSTNAME to HOSTNAME
+            config_key = 'HOSTNAME' if key == 'ANDRE_HOSTNAME' else key
+            setattr(CONF, config_key, env_val)
+            logger.debug('Override from env: {0}={1}'.format(config_key, env_val))
 
     print("CONF", CONF)
 

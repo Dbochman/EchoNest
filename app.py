@@ -334,7 +334,8 @@ SAFE_PATHS = ('/login/', '/logout/', '/playing/', '/queue/', '/volume/',
               '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/')
 SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/add_song',
     '/blast_airhorn', '/airhorn_list', '/queue/', '/jam')
-VALID_HOSTS = ('localhost:5000', str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
+VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:5001',
+               str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
 
 
 @app.before_request

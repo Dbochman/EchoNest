@@ -7,7 +7,6 @@ pyyaml
 redis>=4.0
 gunicorn
 websocket-client
-soundcloud
 spotipy
 python-dateutil
 jinja2

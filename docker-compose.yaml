@@ -38,11 +38,12 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DEBUG=true
+    hostname: localhost
     volumes:
       - ./local_config.yaml:/app/local_config.yaml:ro
       - ./play_logs:/app/play_logs
