@@ -1,15 +1,46 @@
+# Andre - Docker Compose with Security Hardening
+# See: https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html
+
+networks:
+  # External network - allows internet access (needed for Spotify/OAuth APIs)
+  andre_network:
+    driver: bridge
+    internal: false
+
+  # Internal network - no internet access (for Redis isolation)
+  andre_internal:
+    driver: bridge
+    internal: true
+
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
     container_name: andre_redis
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
-    # DO NOT expose Redis to the internet - only internal Docker network
-    # ports:
-    #   - "6379:6379"
+    # Redis only on internal network - no internet access
+    networks:
+      - andre_internal
     expose:
       - "6379"
     volumes:
       - redis_data:/data
+    # Security: read-only filesystem
+    read_only: true
+    tmpfs:
+      - /tmp
+    # Security: drop all capabilities
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          memory: 128M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -25,9 +56,15 @@ services:
   andre:
     build: .
     container_name: andre_app
+    # Security: run as non-root user
+    user: "1000:1000"
     depends_on:
       redis:
         condition: service_healthy
+    # Both networks: internal for Redis, external for Spotify API
+    networks:
+      - andre_network
+      - andre_internal
     ports:
       - "5001:5000"
     env_file:
@@ -39,6 +76,31 @@ services:
       - ./local_config.yaml:/app/local_config.yaml:ro
       - ./play_logs:/app/play_logs
       - ./oauth_creds:/app/oauth_creds
+    # Security: read-only filesystem with exceptions
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/__pycache__
+    # Security: drop all capabilities, prevent privilege escalation
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M
+    # Health check using /health endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -49,8 +111,14 @@ services:
   player:
     build: .
     container_name: andre_player
+    # Security: run as non-root user
+    user: "1000:1000"
     depends_on:
       - andre
+    # Both networks: internal for Redis, external for Spotify API
+    networks:
+      - andre_network
+      - andre_internal
     env_file:
       - .env
     environment:
@@ -60,6 +128,24 @@ services:
       - ./local_config.yaml:/app/local_config.yaml:ro
       - ./play_logs:/app/play_logs
       - ./oauth_creds:/app/oauth_creds
+    # Security: read-only filesystem with exceptions
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/__pycache__
+    # Security: drop all capabilities, prevent privilege escalation
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          memory: 128M
     command: ["python", "master_player.py"]
     restart: unless-stopped
     logging:
