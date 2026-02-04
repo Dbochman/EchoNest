@@ -36,7 +36,8 @@ class PlayHistory(object):
 
         if self._db._r.zscore('playhistory', json_play):
             return # play already in redis
-        self._db._r.zadd('playhistory', endtime, json_play)
+        # New redis-py API: zadd(key, {member: score})
+        self._db._r.zadd('playhistory', {json_play: endtime})
         if not initial_init:
             logger.debug("added play; store is now %d plays" % self.num_plays())
 
