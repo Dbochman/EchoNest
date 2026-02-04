@@ -1,21 +1,53 @@
-version: "3"
 services:
-  db:
-    image: "postgres:11"
-    container_name: "my_postgres"
+  redis:
+    image: redis:7-alpine
+    container_name: andre_redis
     ports:
-      - "54320:5432"
+      - "6379:6379"
     volumes:
-      - my_dbdata:/var/lib/postgresql/data
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  db:
+    image: postgres:15-alpine
+    container_name: andre_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: andre_database
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
   andre:
     build: .
+    container_name: andre_app
     depends_on:
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     ports:
       - "5000:5000"
-    links:
-      - db   
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEBUG=true
+    volumes:
+      - ./local_config.yaml:/app/local_config.yaml:ro
+      - ./play_logs:/app/play_logs
+      - ./oauth_creds:/app/oauth_creds
 
 volumes:
-  my_dbdata:
+  redis_data:
+  postgres_data:

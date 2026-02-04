@@ -1,0 +1,17 @@
+.git
+.gitignore
+.DS_Store
+__pycache__
+*.pyc
+*.pyo
+.idea
+.helios
+node_modules
+play_logs
+oauth_creds
+dump.rdb
+local_config.yaml
+*.md
+.dockerignore
+Dockerfile
+docker-compose.yaml
