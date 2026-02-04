@@ -220,16 +220,26 @@ class DB(object):
                 logger.warning("Error searching for artist: %s", artist_name)
 
         # Strategy 4: Throwback - pull from historical plays on same day of week
+        # These are stored separately with original user info
         try:
-            throwback_tracks = self._h.get_throwback_plays(limit=20)
-            for track_uri in throwback_tracks:
+            throwback_plays = self._h.get_throwback_plays(limit=20)
+            throwback_added = 0
+            for play in throwback_plays:
+                track_uri = play.get('trackid')
+                original_user = play.get('user', 'the@echonest.com')
                 if track_uri == seed_song_uri:
                     continue
                 if self._r.get("FILTER|%s" % track_uri):
                     continue
                 if track_uri not in out_tracks:
-                    out_tracks.append(track_uri)
-            logger.debug("Got %d throwback tracks from history", len(throwback_tracks))
+                    # Store throwback with original user in a separate queue
+                    self._r.rpush('MISC|throwback-songs', track_uri)
+                    self._r.hset('MISC|throwback-users', track_uri, original_user)
+                    throwback_added += 1
+            if throwback_added > 0:
+                self._r.expire('MISC|throwback-songs', 60*20)
+                self._r.expire('MISC|throwback-users', 60*20)
+            logger.debug("Got %d throwback tracks from history", throwback_added)
         except Exception:
             logger.warning("Error getting throwback tracks: %s", traceback.format_exc())
 
@@ -260,6 +270,16 @@ class DB(object):
         if song:
             return self._r.hget('MISC|backup-queue-data', 'user'), song
         self._r.delete('MISC|backup-queue-data')
+
+        # Check throwback queue first - these have original user attribution
+        throwback_song = self._r.lpop('MISC|throwback-songs')
+        if throwback_song:
+            original_user = self._r.hget('MISC|throwback-users', throwback_song) or 'the@echonest.com'
+            self._r.hdel('MISC|throwback-users', throwback_song)
+            logger.debug("returning throwback song %s from %s", throwback_song, original_user)
+            self._r.set('MISC|last-bender-track', throwback_song)
+            return original_user, throwback_song
+
         song = self._r.lpop('MISC|fill-songs')
         attempts = 0
         while not song and attempts < 5:
@@ -271,6 +291,14 @@ class DB(object):
                 self._r.expire('MISC|fill-songs', 60*20)
                 # Store last track as seed for continuous discovery
                 self._r.set('MISC|last-bender-track', songs[-1])
+            # Check throwback again after refill
+            throwback_song = self._r.lpop('MISC|throwback-songs')
+            if throwback_song:
+                original_user = self._r.hget('MISC|throwback-users', throwback_song) or 'the@echonest.com'
+                self._r.hdel('MISC|throwback-users', throwback_song)
+                logger.debug("returning throwback song %s from %s", throwback_song, original_user)
+                self._r.set('MISC|last-bender-track', throwback_song)
+                return original_user, throwback_song
             song = self._r.lpop('MISC|fill-songs')
 
         if song:

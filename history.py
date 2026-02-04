@@ -140,7 +140,7 @@ class PlayHistory(object):
             limit: Max number of tracks to return.
 
         Returns:
-            List of track URIs from historical plays on matching days.
+            List of dicts with 'trackid' and 'user' from historical plays.
         """
         import os
         import random
@@ -193,17 +193,20 @@ class PlayHistory(object):
             logger.info("No valid throwback plays found")
             return []
 
-        # Shuffle and deduplicate by track ID
+        # Shuffle and deduplicate by track ID, keeping user info
         random.shuffle(all_plays)
         seen_tracks = set()
-        unique_tracks = []
+        unique_plays = []
         for play in all_plays:
             track_id = play.get('trackid')
             if track_id and track_id not in seen_tracks:
                 seen_tracks.add(track_id)
-                unique_tracks.append(track_id)
-                if len(unique_tracks) >= limit:
+                unique_plays.append({
+                    'trackid': track_id,
+                    'user': play.get('user', 'the@echonest.com')
+                })
+                if len(unique_plays) >= limit:
                     break
 
-        logger.info("Returning %d throwback tracks", len(unique_tracks))
-        return unique_tracks
+        logger.info("Returning %d throwback tracks", len(unique_plays))
+        return unique_plays
