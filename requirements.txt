@@ -1,18 +1,12 @@
 requests
-flask==0.12
+flask>=2.0
 flask-assets
-#-e git+https://github.com/abourget/gevent-socketio.git#egg=gevent-socketio
-#gevent-socketio
 gevent-websocket
 gevent
 pyyaml
-redis==2.10.5
-msgpack-python
-flask-openid
-fabric
+redis>=4.0
 gunicorn
 websocket-client
-pympler
 soundcloud
 spotipy
 python-dateutil
@@ -21,6 +15,4 @@ itsdangerous
 werkzeug
 click
 psycopg2-binary
-Cython==0.22.1
-pyzmq==14.0
-protobuf==2.6.1
+simplejson

@@ -49,7 +49,10 @@ def _log_file_for_today():
 def _log_play(song_json):
     play_logger = _log_file_for_today()
     try:
-        with open(play_logger, "ab+") as _appendable_log:
+        # Ensure song_json is a string (decode if bytes from Redis)
+        if isinstance(song_json, bytes):
+            song_json = song_json.decode('utf-8')
+        with open(play_logger, "a", encoding="utf-8") as _appendable_log:
             _appendable_log.write(song_json + '\n')
     except Exception as _e:
         logger.error('failed to log %s' % song_json)
@@ -63,7 +66,7 @@ def _clean_song(song):
 ytre = re.compile("PT((\\d+)H)?((\\d+)M)?(\\d+)S")
 def parse_yt_duration(d):
     m = ytre.match(d)
-    print d
+    print(d)
     if m:
         duration = int(m.group(5))
 
@@ -306,7 +309,7 @@ class DB(object):
         this_user_songs_in_queue = 1
         for i in range(0, len(queued) - 1):
             x = queued[i]
-            print str(json.dumps(x))
+            print(str(json.dumps(x)))
             if x.get('user','') == userid:
                 this_user_songs_in_queue += 1
 
@@ -355,7 +358,7 @@ class DB(object):
         if userid.endswith('@spotify.com'):
             return 'https://start.spotify.net/img/avatar/{}.jpg'.format(userid.split('@')[0])
         """
-        grav = hashlib.md5(userid.strip().lower()).hexdigest()
+        grav = hashlib.md5(userid.strip().lower().encode('utf-8')).hexdigest()
         return 'http://www.gravatar.com/avatar/{0}?d=monsterid&s=180'.format(grav)
 
     def _add_song(self, userid, song, force_first, penalty=0):
@@ -369,12 +372,12 @@ class DB(object):
         self._r.sadd(s_id, userid)
         self._r.expire(s_id, 24*60*60)
         score = self._score_track(userid, force_first, song) + penalty
-        self._r.zadd('MISC|priority-queue', score, str(id))
+        self._r.zadd('MISC|priority-queue', {str(id): score})
         self._msg('playlist_update')
         return str(id)
 
     def _pluck_youtube_img(self, doc, height):
-        for img in doc['snippet']['thumbnails'].itervalues():
+        for img in doc['snippet']['thumbnails'].values():
             if img['height'] >= height:
                 return img['url']
         return ""
@@ -404,7 +407,7 @@ class DB(object):
     def add_youtube_song(self, userid, trackid, penalty=0):
         response = requests.get('https://www.googleapis.com/youtube/v3/videos/',
                                 params=dict(id=trackid, part='snippet,contentDetails', key=CONF.YT_API_KEY), verify=False).json()
-        print json.dumps(response)
+        print(json.dumps(response))
         response = response['items'][0]
         if 'coldplay' in response['snippet']['title'].lower():
             logger.info('{0} tried to add "{1}" by Coldplay (YT)'.format(
@@ -424,19 +427,38 @@ class DB(object):
     def get_fill_info(self, trackid):
         key = 'FILL-INFO|{0}'.format(trackid)
 
-        song = self._r.hgetall(key)
-        if song:
+        raw_song = self._r.hgetall(key)
+        if raw_song:
+            # Decode bytes from Redis
+            song = {}
+            for k, v in raw_song.items():
+                k = k.decode('utf-8') if isinstance(k, bytes) else k
+                v = v.decode('utf-8') if isinstance(v, bytes) else v
+                song[k] = v
             return song
 
         song = self.get_spotify_song(trackid, scrobble=False)
-        self._r.hmset(key, song)
+        # Serialize for Redis storage
+        serialized = {}
+        for k, v in song.items():
+            if isinstance(v, (dict, list)):
+                serialized[k] = json.dumps(v)
+            elif v is None:
+                serialized[k] = ''
+            else:
+                serialized[k] = str(v) if not isinstance(v, str) else v
+        self._r.hset(key, mapping=serialized)
         self._r.expire(key, 20*60) # 20 minutes should be long enough -- if not, no worries, just refetch
         return song
 
     def get_spotify_song(self, trackid, scrobble):
+        # Handle get_access_token returning dict in newer spotipy versions
+        token = auth.get_access_token()
+        if isinstance(token, dict):
+            token = token.get('access_token', token)
         response = requests.get(
             'https://api.spotify.com/v1/tracks/'+trackid.split(':')[-1],
-            headers={'Authorization': 'Bearer ' + auth.get_access_token()}).json()
+            headers={'Authorization': 'Bearer ' + str(token)}).json()
 #        if 'US' not in response['available_markets']:
 #            raise Exception('track not available in our region')
 
@@ -463,7 +485,7 @@ class DB(object):
                     auto=not scrobble,
                     img=img)
 
-        print "get_spotify_song", response['artists']
+        print("get_spotify_song", response.get('artists', []))
         # TODO requests.get('')
 
         # print spotify_client.me()
@@ -491,14 +513,16 @@ class DB(object):
 
     def get_jams(self, queued_song_jams_key):
         jams_raw = self._r.zrange(queued_song_jams_key, 0, self.num_jams(queued_song_jams_key), withscores=True)
-        jams = [{"user": user,
-                 "time": datetime.datetime.fromtimestamp(time).isoformat()} for user, time in jams_raw]
-        #jams = [user for user, time in jams_raw]
+        jams = []
+        for user, ts in jams_raw:
+            user = user.decode('utf-8') if isinstance(user, bytes) else user
+            jams.append({"user": user,
+                         "time": datetime.datetime.fromtimestamp(ts).isoformat()})
         logger.debug("jams for %s: %s" % (queued_song_jams_key, jams))
         return jams
 
     def add_jam(self, queued_song_jams_key, userid):
-        self._r.zadd(queued_song_jams_key, int(time.time()), userid.lower())
+        self._r.zadd(queued_song_jams_key, {userid.lower(): int(time.time())})
         logger.info("jammed by " +  userid)
 
     def remove_jam(self, queued_song_jams_key, userid):
@@ -536,17 +560,21 @@ class DB(object):
 
     def add_comment(self, id, userid, text):
         comments_key = 'COMMENTS|{0}'.format(id)
-        self._r.zadd(comments_key, int(time.time()), "{0}||{1}".format(userid.lower(), text))
-	self._r.expire(comments_key, 24*60*60)
+        self._r.zadd(comments_key, {"{0}||{1}".format(userid.lower(), text): int(time.time())})
+        self._r.expire(comments_key, 24*60*60)
         logger.info('comment by {0} at {1}: "{2}"'.format(userid, time.ctime(), text))
         self._msg('playlist_update')
 
     def get_comments(self, id):
         key = 'COMMENTS|{0}'.format(id)
         raw_comments = self._r.zrange(key, 0, self._r.zcard(key), withscores=True)
-        comments = [{'time': secs,
-                     'user': text.split('||')[0],
-                     'body': text.split('||')[1]} for text, secs in raw_comments]
+        comments = []
+        for text, secs in raw_comments:
+            text = text.decode('utf-8') if isinstance(text, bytes) else text
+            parts = text.split('||')
+            comments.append({'time': secs,
+                             'user': parts[0],
+                             'body': parts[1] if len(parts) > 1 else ''})
         logger.debug("comments for %s: %s" % (id, comments))
         return comments
 
@@ -570,9 +598,18 @@ class DB(object):
 
     def get_song_from_queue(self, id):
         key = 'QUEUE|{0}'.format(id)
-        data = self._r.hgetall(key)
+        raw_data = self._r.hgetall(key)
+        # Decode bytes keys/values from Redis
+        data = {}
+        for k, v in raw_data.items():
+            k = k.decode('utf-8') if isinstance(k, bytes) else k
+            v = v.decode('utf-8') if isinstance(v, bytes) else v
+            data[k] = v
         if 'duration' in data:
-            data['duration'] = int(data['duration'])
+            try:
+                data['duration'] = int(float(data['duration']))
+            except (ValueError, TypeError):
+                data['duration'] = 0
         if 'auto' in data:
             data['auto'] = (data['auto'] == 'True')
         else:
@@ -583,7 +620,20 @@ class DB(object):
 
     def set_song_in_queue(self, id, data):
         key = 'QUEUE|{0}'.format(id)
-        self._r.hmset(key, data)
+        # Redis requires string values - serialize complex types
+        serialized_data = {}
+        for k, v in data.items():
+            if isinstance(v, (dict, list)):
+                serialized_data[k] = json.dumps(v)
+            elif isinstance(v, bool):
+                serialized_data[k] = str(v)
+            elif isinstance(v, datetime.datetime):
+                serialized_data[k] = v.isoformat()
+            elif v is None:
+                serialized_data[k] = ''
+            else:
+                serialized_data[k] = str(v) if not isinstance(v, str) else v
+        self._r.hset(key, mapping=serialized_data)
         self._r.expire(key, 24*60*60)
 
     def nuke_queue(self, email):
@@ -787,7 +837,7 @@ class DB(object):
 
         size = new_score - current_score
         logger.info("size:" + str(size))
-        self._r.zincrby('MISC|priority-queue', id, size)
+        self._r.zincrby('MISC|priority-queue', size, id)
         self._msg('playlist_update')
 
     def kill_playing(self, email):
@@ -821,7 +871,11 @@ class DB(object):
                     break
 
     def get_horns(self):
-        rv = [json.loads(x) for x in self._r.lrange('AIRHORNS', 0, -1)]
+        raw = self._r.lrange('AIRHORNS', 0, -1)
+        rv = []
+        for x in raw:
+            x = x.decode('utf-8') if isinstance(x, bytes) else x
+            rv.append(json.loads(x))
         rv.reverse()
         return rv
 
@@ -863,7 +917,7 @@ class DB(object):
         new_vol = max(0, int(new_vol))
 #        print new_vol
         new_vol = min(100, new_vol)
-        print "set_volume", new_vol
+        print("set_volume", new_vol)
         self._r.set('MISC|volume', new_vol)
         self._msg('v|'+str(new_vol))
         logger.info('set_volume in pct %s', new_vol)
@@ -884,7 +938,7 @@ class DB(object):
         return None
 
     def send_email(self, target, subject, body):
-        if isinstance(target, basestring):
+        if isinstance(target, str):
             target = [target]
         msg = "To: {0}\nFrom: {1}\nSubject: {2}\n\n{3}"
         msg = msg.format(', '.join(target), CONF.SMTP_FROM,

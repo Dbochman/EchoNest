@@ -711,7 +711,9 @@ socket.on('volume', function(data){
     volume = data;
     if (is_player) {
         spotify_volume(data);
-        sc_player.set_volume(data);
+        if (typeof sc_player !== 'undefined' && sc_player.set_volume) {
+            sc_player.set_volume(data);
+        }
         if (ytready) {
             Y.setVolume(data * yt_volume_adjust);
         }

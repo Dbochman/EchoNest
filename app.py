@@ -6,21 +6,20 @@ import logging
 import json
 import datetime
 import hashlib
-import urllib
-import urllib2
+import urllib.parse
+import urllib.request
 import socket as psocket
 import gevent
 import redis
 import requests
 import time
-import sets
 import psycopg2
 
 import spotipy.oauth2
 import spotipy
 
 from flask import Flask, request, render_template, session, redirect, jsonify, make_response
-from flask.ext.assets import Environment, Bundle
+from flask_assets import Environment, Bundle
 
 from config import CONF
 from db import DB
@@ -33,7 +32,7 @@ assets = Environment(app)
 app.config['GOOGLE_DOMAIN'] = 'spotify.com'
 #auth = GoogleAuth(app) 
 
-print CONF
+print(CONF)
 
 def __setup_bundles():
     for name, conf in CONF.get('BUNDLES', {}).items():
@@ -116,8 +115,8 @@ class WebSocketManager(object):
                 elif T == '0':
                     pass
                 else:
-                    print T, msg
-                    print 'Invalid msg type'
+                    print(T, msg)
+                    print('Invalid msg type')
                     return
         finally:
             self._ws.close()
@@ -127,14 +126,14 @@ class WebSocketManager(object):
 class MusicNamespace(WebSocketManager):
     def __init__(self, email, penalty):
         super(MusicNamespace, self).__init__()
-        print "MusicNamespace init"
+        print("MusicNamespace init")
         try:
             os.makedirs(CONF.OAUTH_CACHE_PATH)
         except Exception:
             pass
         self.logger = app.logger
         self.email = email
-        print self.email 
+        print(self.email) 
         self.penalty = penalty
         self.auth = spotipy.oauth2.SpotifyOAuth(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
                                                 "prosecco:%s" % email, scope="streaming user-read-currently-playing", cache_path="%s/%s" % (CONF.OAUTH_CACHE_PATH, email))
@@ -147,29 +146,32 @@ class MusicNamespace(WebSocketManager):
         for m in r.listen():
             if m['type'] != 'message':
                 continue
-            m = m['data']
+            msg = m['data']
+            # Decode bytes from Redis pubsub
+            if isinstance(msg, bytes):
+                msg = msg.decode('utf-8')
 
-            if m == 'playlist_update':
+            if msg == 'playlist_update':
                 self.on_fetch_playlist()
-            elif m == 'now_playing_update':
+            elif msg == 'now_playing_update':
                 self.on_fetch_now_playing()
                 self.on_fetch_playlist()
-            elif m.startswith('pp|'):
+            elif msg.startswith('pp|'):
                 #self.log('sending position update to {0}'.format(self.email))
-                _, src, track, pos = m.split('|', 3)
+                _, src, track, pos = msg.split('|', 3)
 #                logger.debug(session['spotify_token'])
                 self.emit('player_position', src, track, int(pos))
-            elif m.startswith('v|'):
-                _, msg = m.split('|', 1)
-                self.emit('volume', msg)
-            elif m.startswith('do_airhorn'):
-                _, v, c = m.split('|', 2)
+            elif msg.startswith('v|'):
+                _, vol = msg.split('|', 1)
+                self.emit('volume', vol)
+            elif msg.startswith('do_airhorn'):
+                _, v, c = msg.split('|', 2)
                 self.logger.info('about to emit')
                 self.emit('do_airhorn', v, c)
-            elif m.startswith('no_airhorn'):
-                _, msg = m.split('|', 1)
-                self.emit('no_airhorn', json.loads(msg))
-            elif m == 'update_freehorn':
+            elif msg.startswith('no_airhorn'):
+                _, data = msg.split('|', 1)
+                self.emit('no_airhorn', json.loads(data))
+            elif msg == 'update_freehorn':
                 self.emit('free_horns', d.get_free_horns(self.email))
 
     def log(self, msg, debug=True):
@@ -315,9 +317,12 @@ class VolumeNamespace(WebSocketManager):
         for m in r.listen():
             if m['type'] != 'message':
                 continue
-            if m['data'].startswith('v|'):
-                _, msg = m['data'].split('|', 1)
-                self.emit('volume', msg)
+            data = m['data']
+            if isinstance(data, bytes):
+                data = data.decode('utf-8')
+            if data.startswith('v|'):
+                _, vol = data.split('|', 1)
+                self.emit('volume', vol)
 
 
 @app.context_processor
@@ -329,7 +334,7 @@ SAFE_PATHS = (u'/login/', u'/logout/', u'/playing/', u'/queue/', u'/volume/',
               u'/authentication/callback', u'/token', u'/last/', u'/airhorns/', u'/z/')
 SAFE_PARAM_PATHS = (u'/history', u'/user_history', u'/user_jam_history', u'/search/v2', u'/add_song',
     u'/blast_airhorn', u'/airhorn_list', u'/queue/', u'/jam')
-VALID_HOSTS = (u'localhost:5000', unicode(CONF.HOSTNAME))
+VALID_HOSTS = ('localhost:5000', str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
 
 
 @app.before_request
@@ -391,7 +396,7 @@ def login():
                 response_type="code", client_id=CONF.GOOGLE_CLIENT_ID,
                 approval_prompt="auto", access_type="online")
     url = "https://accounts.google.com/o/oauth2/auth?{}".format(
-        urllib.urlencode(args))
+        urllib.parse.urlencode(args))
     return redirect(url)
 
 
@@ -484,7 +489,7 @@ def socket():
 
 @app.route('/volume/')
 def volume():
-    print 'VOLUME IN'
+    print('VOLUME IN')
     VolumeNamespace().serve()
     return ''
 
@@ -516,7 +521,7 @@ def jam():
 def guest():
     if request.method == 'GET':
         return render_template('guest_login.html', failure=False)
-    print request.values
+    print(request.values)
     email = d.try_login(request.values.get('email', ''),
                         request.values.get('passwd', ''))
     if not email:

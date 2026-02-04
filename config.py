@@ -27,17 +27,19 @@ def get_config_filenames():
 
 def __read_conf(*files):
     for f in files:
-        print f
+        print(f)
         try:
-            data = yaml.load(open(f))
-            print data
-            for k,v in data.items():
-                print k, v
-                setattr(CONF, k, v)
+            with open(f) as fh:
+                data = yaml.safe_load(fh)
+            if data:
+                print(data)
+                for k, v in data.items():
+                    print(k, v)
+                    setattr(CONF, k, v)
             logger.debug('Loaded file "{0}"'.format(f))
         except Exception as e:
-            print "failed", e
+            print("failed", e)
             logger.debug('Failed to load file "{0}" ({1})'.format(f, str(e)))
-    print "CONF", CONF
+    print("CONF", CONF)
 
 __read_conf(*get_config_filenames())
