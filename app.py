@@ -208,9 +208,16 @@ class MusicNamespace(WebSocketManager):
 
     def on_fetch_search_token(self):
         logger.debug("fetch search token")
-        token = auth.get_access_token()
-        self.emit('search_token_update', dict(token=auth.token_info['access_token'],
-                                            time_left=int(auth.token_info['expires_at'] - time.time())))
+        token_info = auth.get_access_token()
+        # Handle get_access_token returning dict in newer spotipy versions
+        if isinstance(token_info, dict):
+            access_token = token_info.get('access_token')
+            expires_at = token_info.get('expires_at', time.time() + 3600)
+        else:
+            access_token = auth.token_info['access_token']
+            expires_at = auth.token_info['expires_at']
+        self.emit('search_token_update', dict(token=access_token,
+                                            time_left=int(expires_at - time.time())))
 
     def on_fetch_auth_token(self):
         logger.debug("fetch auth token")
@@ -641,7 +648,11 @@ def user_jam_history_api(userid):
 @app.route('/search/v2', methods=['GET'])
 def search_spotify():
     q = request.values['q']
-    sp = spotipy.Spotify(auth=auth.get_access_token())
+    # Handle get_access_token returning dict in newer spotipy versions
+    token = auth.get_access_token()
+    if isinstance(token, dict):
+        token = token.get('access_token', token)
+    sp = spotipy.Spotify(auth=token)
     search_result = sp.search(q, 25)
     
     parsed_result = []
