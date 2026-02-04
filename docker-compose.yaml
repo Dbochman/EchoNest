@@ -28,11 +28,14 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    # Security: drop all capabilities
+    # Security: drop all capabilities, add back only what Redis needs
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - SETGID  # Required for Redis to switch to redis user
+      - SETUID  # Required for Redis to switch to redis user
     # Resource limits
     deploy:
       resources:

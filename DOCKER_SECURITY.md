@@ -86,6 +86,8 @@ cap_drop:
   - ALL
 ```
 
+**Note**: Redis requires `SETGID` and `SETUID` capabilities to switch to the internal `redis` user, so these are added back for the Redis container only. The app containers have all capabilities dropped.
+
 ### 7. Health Checks (Low)
 
 **Risk**: Unhealthy containers may continue serving traffic.
