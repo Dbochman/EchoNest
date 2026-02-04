@@ -16,3 +16,4 @@ werkzeug
 click
 psycopg2-binary
 simplejson
+pytest
