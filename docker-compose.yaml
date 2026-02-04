@@ -3,8 +3,11 @@ services:
     image: redis:7-alpine
     container_name: andre_redis
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
+    # DO NOT expose Redis to the internet - only internal Docker network
+    # ports:
+    #   - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
