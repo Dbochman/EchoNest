@@ -1,10 +1,5 @@
 import yaml, os, os.path, pprint, logging
 
-def _parse_env_bool(value):
-    if value is None:
-        return None
-    return value.strip().lower() in ("1", "true", "yes", "y", "on")
-
 class _Configuration(object):
     def __repr__(self):
         return pprint.pformat(dict((k, getattr(self, k))
@@ -30,34 +25,52 @@ def get_config_filenames():
         logger.debug('default config file names, "{0}"'.format(fnames))
     return [os.path.abspath(f) for f in fnames]
 
+# Environment variable overrides (these take precedence over yaml files)
+# Note: HOSTNAME is intentionally excluded since Docker sets it to the container ID
+ENV_OVERRIDES = [
+    'REDIS_HOST', 'REDIS_PORT', 'DEBUG', 'SECRET_KEY',
+    'SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET',
+    'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
+    'DEV_AUTH_EMAIL', 'YT_API_KEY', 'SOUNDCLOUD_CLIENT_ID',
+    'ANDRE_HOSTNAME'  # Use ANDRE_HOSTNAME instead to avoid Docker conflict
+]
+
 def __read_conf(*files):
     for f in files:
+        print(f)
         try:
-            with open(f, "r") as fh:
-                data = yaml.safe_load(fh) or {}
-            for k, v in data.items():
-                setattr(CONF, k, v)
+            with open(f) as fh:
+                data = yaml.safe_load(fh)
+            if data:
+                print(data)
+                for k, v in data.items():
+                    print(k, v)
+                    setattr(CONF, k, v)
             logger.debug('Loaded file "{0}"'.format(f))
         except Exception as e:
+            print("failed", e)
             logger.debug('Failed to load file "{0}" ({1})'.format(f, str(e)))
 
-    # Apply selected environment overrides after file load.
-    env_map = {
-        "DEBUG": ("DEBUG", _parse_env_bool),
-        "DEV_AUTH_EMAIL": ("DEV_AUTH_EMAIL", str),
-        "REDIS_HOST": ("REDIS_HOST", str),
-        "REDIS_PORT": ("REDIS_PORT", int),
-        "HOSTNAME": ("HOSTNAME", str),
-    }
-    for env_key, (conf_key, cast) in env_map.items():
-        if env_key in os.environ:
-            raw = os.environ.get(env_key)
-            if raw is None:
-                continue
-            try:
-                val = cast(raw) if cast is not None else raw
-                setattr(CONF, conf_key, val)
-            except Exception as e:
-                logger.debug('Failed to apply env override %s: %s', env_key, e)
+    # Apply environment variable overrides
+    for key in ENV_OVERRIDES:
+        env_val = os.environ.get(key)
+        if env_val is not None:
+            # Convert string booleans
+            if env_val.lower() in ('true', '1', 'yes'):
+                env_val = True
+            elif env_val.lower() in ('false', '0', 'no'):
+                env_val = False
+            # Convert numeric strings for port
+            elif key.endswith('_PORT'):
+                try:
+                    env_val = int(env_val)
+                except ValueError:
+                    pass
+            # Map ANDRE_HOSTNAME to HOSTNAME
+            config_key = 'HOSTNAME' if key == 'ANDRE_HOSTNAME' else key
+            setattr(CONF, config_key, env_val)
+            logger.debug('Override from env: {0}={1}'.format(config_key, env_val))
+
+    print("CONF", CONF)
 
 __read_conf(*get_config_filenames())

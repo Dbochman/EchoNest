@@ -1,38 +1,70 @@
-version: "3"
 services:
   redis:
-    image: "redis:7"
-    container_name: "andre_redis"
+    image: redis:7-alpine
+    container_name: andre_redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
   db:
-    image: "postgres:11"
-    container_name: "my_postgres"
+    image: postgres:15-alpine
+    container_name: andre_postgres
     ports:
-      - "54320:5432"
-    volumes:
-      - my_dbdata:/var/lib/postgresql/data
+      - "5432:5432"
     environment:
-      - POSTGRES_PASSWORD=postgres
+      POSTGRES_DB: andre_database
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
   andre:
     build: .
+    container_name: andre_app
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     ports:
       - "5001:5000"
-    links:
-      - db   
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - DEBUG=True
-      - DEV_AUTH_EMAIL=dev@example.com
-      - SKIP_SPOTIFY_PREFETCH=1
-      - HOSTNAME=localhost:5001
-      - PYTHONUNBUFFERED=1
+      - DEBUG=false
+      # - DEV_AUTH_EMAIL=dev@gmail.com
+    hostname: localhost
+    volumes:
+      - ./local_config.yaml:/app/local_config.yaml:ro
+      - ./play_logs:/app/play_logs
+      - ./oauth_creds:/app/oauth_creds
+
+  player:
+    build: .
+    container_name: andre_player
+    depends_on:
+      - andre
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEBUG=false
+    volumes:
+      - ./local_config.yaml:/app/local_config.yaml:ro
+      - ./play_logs:/app/play_logs
+      - ./oauth_creds:/app/oauth_creds
+    command: ["python", "master_player.py"]
 
 volumes:
-  my_dbdata:
+  redis_data:
+  postgres_data:

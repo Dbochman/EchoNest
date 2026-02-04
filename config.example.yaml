@@ -1,60 +1,77 @@
-SPOTIFY_CLIENT_ID: "YOUR_SPOTIFY_CLIENT_ID"
-SPOTIFY_CLIENT_SECRET: "YOUR_SPOTIFY_CLIENT_SECRET"
-SPOTIFY_USERNAME: "your-spotify-username"
-SPOTIFY_USERID: "your-spotify-userid"
-GOOGLE_CLIENT_ID: "YOUR_GOOGLE_CLIENT_ID"
-GOOGLE_CLIENT_SECRET: "YOUR_GOOGLE_CLIENT_SECRET"
-YT_API_KEY: "YOUR_YOUTUBE_API_KEY"
-DEBUG: True
+# Andre Configuration Example
+# Copy this to local_config.yaml and fill in your values
+
+# Spotify OAuth - Required
+SPOTIFY_CLIENT_ID: "your-spotify-client-id"
+SPOTIFY_CLIENT_SECRET: "your-spotify-client-secret"
+SPOTIFY_USERNAME: your_spotify_username
+
+# Google OAuth - Required for authentication
+GOOGLE_CLIENT_ID: "your-google-client-id.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET: "your-google-client-secret"
+
+# Allowed email domains for Google OAuth (list format)
+ALLOWED_EMAIL_DOMAINS:
+  - gmail.com
+
+# YouTube API Key (optional, for YouTube support)
+YT_API_KEY: "your-youtube-api-key"
+
+# SoundCloud Client ID (optional, for SoundCloud support)
+SOUNDCLOUD_CLIENT_ID: "your-soundcloud-client-id"
+
+# Debug mode
+DEBUG: true
+
+# Dev-only auth bypass email (only works when DEBUG=true and on localhost)
 DEV_AUTH_EMAIL: "dev@example.com"
-REDIS_HOST: "redis"
+
+# Flask secret key - generate with: python -c "import secrets; print(secrets.token_hex(50))"
+SECRET_KEY: "change-this-to-a-random-secret-key"
+
+# Redis connection (for Docker, use service name 'redis')
+REDIS_HOST: "localhost"
 REDIS_PORT: 6379
-SECRET_KEY: "CHANGE_ME"
-PYTHON_RAVEN_DSN: ""
-JAVASCRIPT_RAVEN_DSN: ""
+
+# Hostname for production
+HOSTNAME: "localhost:5000"
+
+# Logging
 LOG_FORMAT: "%(asctime)-15s %(name)-10s [%(levelname)s] %(message)s"
-BENDER_USE_DM: False
-DM_QUEUE_LOW: 999
-DM_ABS_LOW: 0
-DM_NUM_TRACKS_PER_USER: 0
-DM_USER_EXPIRE_SECONDS: 604800
-DM_PENALTY: 900
-BUNDLES:
-    js:
-        prefix: 'js/'
-        files:
-            - jquery-1.10.2.js
-            - underscore.js
-            - bootstrap.js
-            - backbone.js
-            - app.js
-            - sc.js
-    css:
-        prefix: 'css/'
-        files:
-            - bootstrap.min.css
-            - font-awesome.min.css
-            - app.css
-CACHE_BUSTER: 2017-10-20
-SMTP_HOST: "smtp.example.com"
-SMTP_USER: "user@example.com"
-SMTP_PASS: "password"
-SMTP_FROM: "andre@example.com"
-SOUNDCLOUD_CLIENT_ID: "YOUR_SOUNDCLOUD_CLIENT_ID"
+LOG_DIR: "./play_logs"
+OAUTH_CACHE_PATH: "./oauth_creds"
+
+# Bender (auto-fill) settings
+USE_BENDER: true
+MAX_BENDER_MINUTES: 120
+BENDER_FILTER_TIME: 604800  # 1 week in seconds
+BENDER_REGIONS:
+  - US
+
+# Airhorn settings
 AIRHORN_MAX: 99
 AIRHORN_EXPIRE_SEC: 20
 AIRHORN_EXPIRE_COUNT: 2
 AIRHORN_LIST_MIN_LEN: 5
-USE_BENDER: True
 FREE_AIRHORN: 99
-BENDER_CLUSTERS: True
-BENDER_JAMS: True
-BENDER_REGIONS:
-    - US
-BENDER_DISCOVER_PLAYLIST: "3Qx1GjX3Mfz3WE8SBVXzfH"
-TOP_TRACKS_REGION: US
-MAX_BENDER_MINUTES: 120
-LOG_DIR: './play_logs'
-OAUTH_CACHE_PATH: './oauth_creds'
-HOSTNAME: "localhost:5000"
-BENDER_FILTER_TIME: 604800
+
+# Asset bundles
+BUNDLES:
+  js:
+    prefix: 'js/'
+    files:
+      - jquery-1.10.2.js
+      - underscore.js
+      - bootstrap.js
+      - backbone.js
+      - app.js
+      - sc.js
+  css:
+    prefix: 'css/'
+    files:
+      - bootstrap.min.css
+      - font-awesome.min.css
+      - app.css
+
+# Cache buster for static assets
+CACHE_BUSTER: "2024-01-01"

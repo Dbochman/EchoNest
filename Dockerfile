@@ -1,35 +1,34 @@
-# Hello friend!
-#
-# Build and run:
-#  $ docker build -t andre .
-#  $ docker run -p 5000:5000 --env-file .env andre
-#
-# This container expects Redis to be reachable at REDIS_HOST/REDIS_PORT.
-FROM python:3.10-slim
+# Andre - Collaborative Music Queue System
+# Python 3 Docker image
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+FROM python:3.11-slim-bookworm
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    libffi-dev \
-    libssl-dev \
-    libjpeg-dev \
-    zlib1g-dev \
-    libevent-dev \
-    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /prosecco
-COPY . /prosecco
+# Set working directory
+WORKDIR /app
 
-RUN pip install --no-cache-dir pip==23.3.2 setuptools==57.5.0 \
-    && pip install --no-cache-dir -r /prosecco/requirements.txt
+# Copy requirements first for better caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-ADD supervise/player.conf /etc/supervisor/conf.d/player.conf
-ADD supervise/main.conf /etc/supervisor/conf.d/main.conf
+# Copy application code
+COPY . .
 
+# Create directories for logs and oauth
+RUN mkdir -p /app/play_logs /app/oauth_creds
+
+# Expose the application port
 EXPOSE 5000
 
-CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
+# Default environment variables
+ENV REDIS_HOST=redis
+ENV REDIS_PORT=6379
+ENV DEBUG=false
+
+# Run the application
+CMD ["python", "run.py"]

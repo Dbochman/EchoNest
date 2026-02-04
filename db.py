@@ -8,6 +8,7 @@ import random
 import uuid
 import logging
 import pickle
+import base64
 import smtplib
 import hashlib
 import os
@@ -15,7 +16,6 @@ import traceback
 import requests
 import redis
 import re
-import base64
 
 import spotipy.oauth2, spotipy.client
 
@@ -34,33 +34,24 @@ else:
 
 STOPWORDS = set(['the', 'and', 'for', ])
 
+# Base64-wrapped pickle helpers for storing binary data in decode_responses=True Redis
+def pickle_dump_b64(obj):
+    """Serialize object with pickle and encode as base64 string for Redis storage."""
+    return base64.b64encode(pickle.dumps(obj)).decode('ascii')
+
+def pickle_load_b64(data):
+    """Decode base64 string and deserialize with pickle."""
+    if data is None:
+        return None
+    if isinstance(data, bytes):
+        data = data.decode('ascii')
+    return pickle.loads(base64.b64decode(data))
+
 server_tokens = spotipy.oauth2.SpotifyClientCredentials(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET)
 spotify_client = spotipy.client.Spotify(client_credentials_manager=server_tokens)
 
 auth = spotipy.oauth2.SpotifyClientCredentials(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET)
-if not os.environ.get("SKIP_SPOTIFY_PREFETCH"):
-    auth.get_access_token()
-
-
-def _pickle_dump(value):
-    return base64.b64encode(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)).decode("ascii")
-
-
-def _pickle_load(value):
-    if value is None:
-        return None
-    if isinstance(value, bytes):
-        raw = value
-    else:
-        raw = value.encode("utf-8", "surrogateescape")
-    try:
-        decoded = base64.b64decode(raw, validate=True)
-        return pickle.loads(decoded)
-    except Exception:
-        try:
-            return pickle.loads(raw)
-        except Exception:
-            return None
+auth.get_access_token()
 
 
 def _now():
@@ -72,7 +63,7 @@ def _log_file_for_today():
 def _log_play(song_json):
     play_logger = _log_file_for_today()
     try:
-        with open(play_logger, "ab+") as _appendable_log:
+        with open(play_logger, "a", encoding="utf-8") as _appendable_log:
             _appendable_log.write(song_json + '\n')
     except Exception as _e:
         logger.error('failed to log %s' % song_json)
@@ -86,7 +77,7 @@ def _clean_song(song):
 ytre = re.compile("PT((\\d+)H)?((\\d+)M)?(\\d+)S")
 def parse_yt_duration(d):
     m = ytre.match(d)
-    logger.debug("parse_yt_duration raw %s", d)
+    print(d)
     if m:
         duration = int(m.group(5))
 
@@ -107,13 +98,8 @@ class DB(object):
     def __init__(self, init_history_to_redis=True):
         logger.info('Creating DB object')
         redis_host = CONF.REDIS_HOST or 'localhost'
-        redis_port = int(CONF.REDIS_PORT) if CONF.REDIS_PORT else 6379
-        self._r = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            decode_responses=True,
-            encoding_errors='surrogateescape',
-        )
+        redis_port = CONF.REDIS_PORT or 6379
+        self._r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
         self._h = PlayHistory(self)
         if init_history_to_redis:
             self._h.init_history()
@@ -133,63 +119,112 @@ class DB(object):
         self._r.setex("FILTER|%s"% tid, CONF.BENDER_FILTER_TIME, 1)
 
     def _grab_fill_in_songs(self, depth=0):
-        # fall back song - delicious's ghost
-        THE_STRANGER = "3utq2FgD1pkmIoaWfjXWAU"
+        """
+        Bender's recommendation engine using Artist Top Tracks + Album Tracks.
+
+        Spotify deprecated recommendations (Nov 2024) and related-artists APIs.
+        This approach uses still-working endpoints:
+        1. Gets the seed from last-queued, last Bender track, or now-playing
+        2. Fetches top tracks from the seed artist(s)
+        3. Gets other tracks from the same album
+        4. Searches for artist name to find more variety
+        5. Loops continuously with the last track as new seed
+        """
+        # Try multiple seed sources for continuity
+        seed_song = None
+
+        # 1. Last user-queued track
         seed_song = self._r.get('MISC|last-queued')
+
+        # 2. Last Bender track (for continuous discovery)
         if not seed_song:
-            seed_song = THE_STRANGER
-        else:
-            seed_song = seed_song.split(":")[-1]
-        logger.debug("seed was %s" % seed_song)
-        # get recos
-        market = None
-        if CONF.BENDER_REGIONS:
-            market = CONF.BENDER_REGIONS[0]
+            seed_song = self._r.get('MISC|last-bender-track')
+
+        # 3. Currently playing track
+        if not seed_song:
+            now_playing_id = self._r.get('MISC|now-playing')
+            if now_playing_id:
+                now_playing_data = self._r.hget('QUEUE|{}'.format(now_playing_id), 'trackid')
+                if now_playing_data:
+                    seed_song = now_playing_data
+
+        # 4. Ultimate fallback - Billy Joel (only if nothing else available)
+        if not seed_song:
+            seed_song = "spotify:track:3utq2FgD1pkmIoaWfjXWAU"
+
+        # Extract track ID from URI
+        seed_song = seed_song.split(":")[-1]
+        logger.debug("Bender seed song: %s" % seed_song)
+
+        market = CONF.BENDER_REGIONS[0] if CONF.BENDER_REGIONS else 'US'
+
+        # Get the seed track details
         try:
-            rv = spotify_client.recommendations(seed_tracks=[seed_song], country=market)
+            song_deets = spotify_client.track(seed_song)
+            seed_artists = [(a['id'], a['name']) for a in song_deets.get('artists', [])]
+            album_id = song_deets.get('album', {}).get('id')
         except Exception:
-            logger.warn("Error getting recs for: " + str(seed_song) )
-            logger.warn(traceback.format_exc())
-            rv = {}
-        if not rv.get('tracks'):
-            try:
-                song_deets = spotify_client.track(seed_song)
-            except Exception:
-                logger.warn("Error getting track details for: " + str(seed_song))
-                logger.warn(traceback.format_exc())
-                return []
-            # try every artist
-            for artist in song_deets['artists']:
-                logger.debug(artist['id'])
-                try:
-                    rv = spotify_client.recommendations(seed_artists=[artist['id']], country=market)
-                except Exception:
-                    logger.warn("Error getting recs for artist: " + str(artist['id']) )
-                    logger.warn(traceback.format_exc())
-                    rv = {}
+            logger.warning("Error getting track details for seed: %s", seed_song)
+            logger.warning(traceback.format_exc())
+            return []
 
-                if rv.get('tracks'):
-                    break
-            else:
-                try:
-                    rv = spotify_client.recommendations(seed_tracks=[THE_STRANGER], country=market)
-                except Exception:
-                    logger.warn("Error getting recs for: " + str(THE_STRANGER))
-                    logger.warn(traceback.format_exc())
-                    rv = {'tracks':[]}
-        logger.debug(str(rv))
-
-        seed_song = "spotify:track:"+seed_song
         out_tracks = []
-        for t in rv['tracks']:
-            t = t['uri']
-            if t == seed_song:
-                continue
-            if self._r.get("FILTER|%s" % t):
-                logger.info("%s caught in the filter" % t)
-                continue
+        seed_song_uri = "spotify:track:" + seed_song
 
-            out_tracks.append(t)
+        # Strategy 1: Get top tracks from each artist
+        for artist_id, artist_name in seed_artists[:2]:
+            try:
+                top_tracks = spotify_client.artist_top_tracks(artist_id, country=market)
+                for track in top_tracks.get('tracks', []):
+                    track_uri = track['uri']
+                    if track_uri == seed_song_uri:
+                        continue
+                    if self._r.get("FILTER|%s" % track_uri):
+                        continue
+                    out_tracks.append(track_uri)
+                logger.debug("Got %d top tracks from %s", len(top_tracks.get('tracks', [])), artist_name)
+            except Exception:
+                logger.warning("Error getting top tracks for artist: %s", artist_id)
+
+        # Strategy 2: Get other tracks from the same album
+        if album_id:
+            try:
+                album_tracks = spotify_client.album_tracks(album_id)
+                for track in album_tracks.get('items', []):
+                    track_uri = track['uri']
+                    if track_uri == seed_song_uri:
+                        continue
+                    if self._r.get("FILTER|%s" % track_uri):
+                        continue
+                    if track_uri not in out_tracks:
+                        out_tracks.append(track_uri)
+                logger.debug("Got %d album tracks", len(album_tracks.get('items', [])))
+            except Exception:
+                logger.warning("Error getting album tracks for: %s", album_id)
+
+        # Strategy 3: Search for artist name to find collaborations and similar
+        if seed_artists:
+            artist_name = seed_artists[0][1]
+            try:
+                search_results = spotify_client.search(artist_name, limit=20, type='track', market=market)
+                for track in search_results.get('tracks', {}).get('items', []):
+                    track_uri = track['uri']
+                    if track_uri == seed_song_uri:
+                        continue
+                    if self._r.get("FILTER|%s" % track_uri):
+                        continue
+                    if track_uri not in out_tracks:
+                        out_tracks.append(track_uri)
+                logger.debug("Got %d tracks from search", len(search_results.get('tracks', {}).get('items', [])))
+            except Exception:
+                logger.warning("Error searching for artist: %s", artist_name)
+
+        # Remove duplicates and shuffle for variety
+        out_tracks = list(dict.fromkeys(out_tracks))  # Preserve order, remove dupes
+        random.shuffle(out_tracks)
+        out_tracks = out_tracks[:20]
+
+        logger.debug("Bender found %d tracks total", len(out_tracks))
         return out_tracks
 
     def ensure_fill_songs(self):
@@ -198,12 +233,13 @@ class DB(object):
             return
 
         songs = self._grab_fill_in_songs()
-        logger.debug(str(songs))
-        if not songs:
-            songs = ['spotify:track:3utq2FgD1pkmIoaWfjXWAU']
-
-        logger.debug(str(songs))
-        self._r.rpush('MISC|fill-songs', *songs)
+        logger.debug("ensure_fill_songs got: %s", songs)
+        if songs:
+            self._r.rpush('MISC|fill-songs', *songs)
+            # Store the last track as seed for next round of discovery
+            self._r.set('MISC|last-bender-track', songs[-1])
+        else:
+            logger.warning("Bender couldn't find any tracks - recommendations exhausted")
 
     def get_fill_song(self):
         song = self._r.lpop('MISC|backup-queue')
@@ -211,23 +247,34 @@ class DB(object):
             return self._r.hget('MISC|backup-queue-data', 'user'), song
         self._r.delete('MISC|backup-queue-data')
         song = self._r.lpop('MISC|fill-songs')
-        while not song:
+        attempts = 0
+        while not song and attempts < 5:
+            attempts += 1
             songs = self._grab_fill_in_songs()
-            logger.debug(str(songs))
-            if not songs:
-                songs = ['spotify:track:3utq2FgD1pkmIoaWfjXWAU']
-            self._r.rpush('MISC|fill-songs', *songs)
-            self._r.expire('MISC|fill-songs', 60*20)
+            logger.debug("get_fill_song attempt %d got: %s", attempts, songs)
+            if songs:
+                self._r.rpush('MISC|fill-songs', *songs)
+                self._r.expire('MISC|fill-songs', 60*20)
+                # Store last track as seed for continuous discovery
+                self._r.set('MISC|last-bender-track', songs[-1])
             song = self._r.lpop('MISC|fill-songs')
-        logger.debug("returning song %s", song)
-        return 'the@echonest.com', song
+
+        if song:
+            logger.debug("returning song %s", song)
+            # Update last-bender-track so next batch continues from here
+            self._r.set('MISC|last-bender-track', song)
+            return 'the@echonest.com', song
+        else:
+            logger.error("Bender exhausted all recommendation sources")
+            # Return None to signal no song available
+            return None, None
 
     def bender_streak(self):
         now = self.player_now()
         try:
-            then = _pickle_load(self._r.get('MISC|bender_streak_start'))
-            if not then:
-                raise ValueError('missing bender streak')
+            then = pickle_load_b64(self._r.get('MISC|bender_streak_start'))
+            if then is None:
+                then = _now()
             logger.debug("bender streak is %s seconds, now %s then %s" % ((now - then).total_seconds(), now, then))
         except Exception as _e:
             logger.debug("Exception getting MISC|bender_streak_start: %s; assuming no streak" % _e)
@@ -249,9 +296,8 @@ class DB(object):
 
             song = self.get_now_playing()
             finish_on = self._r.get('MISC|current-done')
-            finish_on_parsed = _pickle_load(finish_on)
-            if finish_on and finish_on_parsed and finish_on_parsed > self.player_now():
-                done = finish_on_parsed
+            if finish_on and pickle_load_b64(finish_on) > self.player_now():
+                done = pickle_load_b64(finish_on)
             else:
                 if song:
                     self.log_finished_song(song)
@@ -259,7 +305,7 @@ class DB(object):
 
                 song = self.pop_next()
                 if not song:
-                    logger.debug("streak start set %s"%self._r.setnx('MISC|bender_streak_start', _pickle_dump(self.player_now())))
+                    logger.debug("streak start set %s"%self._r.setnx('MISC|bender_streak_start', pickle_dump_b64(self.player_now())))
                     if (not CONF.USE_BENDER) or (self.bender_streak() <= CONF.MAX_BENDER_MINUTES * 60):
                         got_song = False
                         while not got_song:
@@ -286,7 +332,7 @@ class DB(object):
 
             self._r.setex('MISC|current-done',
                           expire_on,
-                          _pickle_dump(done))
+                          pickle_dump_b64(done))
             self._r.set('MISC|started-on',
                           self.player_now().isoformat())
             while self.player_now() < done:
@@ -311,10 +357,8 @@ class DB(object):
         t = self._r.get('MISC|player-now')
         if t:
             try:
-#                logger.debug("player-now %s" % _pickle_load(t))
-                parsed = _pickle_load(t)
-                if parsed:
-                    return parsed
+#                logger.debug("player-now %s" % pickle_load_b64(t))
+                return pickle_load_b64(t)
             except Exception:
                 logger.error("exception loading current player time: %s", traceback.format_exc())
                 logger.debug("at time (not from redis): %s " % _now())
@@ -326,7 +370,7 @@ class DB(object):
     def _add_now(self, seconds):
         new_t = self.player_now() + datetime.timedelta(seconds=seconds)
 #        logger.debug("updating time %s", new_t)
-        self._r.setex('MISC|player-now', 12*3600, _pickle_dump(new_t))
+        self._r.setex('MISC|player-now', 12*3600, pickle_dump_b64(new_t))
 
     def _song_keywords(self, title):
         return set(x for x in title.lower().split()
@@ -346,7 +390,7 @@ class DB(object):
         this_user_songs_in_queue = 1
         for i in range(0, len(queued) - 1):
             x = queued[i]
-            logger.debug("queue item %s", json.dumps(x))
+            print(str(json.dumps(x)))
             if x.get('user','') == userid:
                 this_user_songs_in_queue += 1
 
@@ -395,7 +439,7 @@ class DB(object):
         if userid.endswith('@spotify.com'):
             return 'https://start.spotify.net/img/avatar/{}.jpg'.format(userid.split('@')[0])
         """
-        grav = hashlib.md5(userid.strip().lower()).hexdigest()
+        grav = hashlib.md5(userid.strip().lower().encode('utf-8')).hexdigest()
         return 'http://www.gravatar.com/avatar/{0}?d=monsterid&s=180'.format(grav)
 
     def _add_song(self, userid, song, force_first, penalty=0):
@@ -444,7 +488,7 @@ class DB(object):
     def add_youtube_song(self, userid, trackid, penalty=0):
         response = requests.get('https://www.googleapis.com/youtube/v3/videos/',
                                 params=dict(id=trackid, part='snippet,contentDetails', key=CONF.YT_API_KEY), verify=False).json()
-        logger.debug("spotify response %s", json.dumps(response))
+        print(json.dumps(response))
         response = response['items'][0]
         if 'coldplay' in response['snippet']['title'].lower():
             logger.info('{0} tried to add "{1}" by Coldplay (YT)'.format(
@@ -464,19 +508,32 @@ class DB(object):
     def get_fill_info(self, trackid):
         key = 'FILL-INFO|{0}'.format(trackid)
 
-        song = self._r.hgetall(key)
-        if song:
-            return song
+        raw_song = self._r.hgetall(key)
+        if raw_song:
+            return raw_song
 
         song = self.get_spotify_song(trackid, scrobble=False)
-        self._r.hmset(key, song)
+        # Serialize for Redis storage
+        serialized = {}
+        for k, v in song.items():
+            if isinstance(v, (dict, list)):
+                serialized[k] = json.dumps(v)
+            elif v is None:
+                serialized[k] = ''
+            else:
+                serialized[k] = str(v) if not isinstance(v, str) else v
+        self._r.hset(key, mapping=serialized)
         self._r.expire(key, 20*60) # 20 minutes should be long enough -- if not, no worries, just refetch
         return song
 
     def get_spotify_song(self, trackid, scrobble):
+        # Handle get_access_token returning dict in newer spotipy versions
+        token = auth.get_access_token()
+        if isinstance(token, dict):
+            token = token.get('access_token', token)
         response = requests.get(
             'https://api.spotify.com/v1/tracks/'+trackid.split(':')[-1],
-            headers={'Authorization': 'Bearer ' + auth.get_access_token()}).json()
+            headers={'Authorization': 'Bearer ' + str(token)}).json()
 #        if 'US' not in response['available_markets']:
 #            raise Exception('track not available in our region')
 
@@ -503,7 +560,7 @@ class DB(object):
                     auto=not scrobble,
                     img=img)
 
-        logger.debug("get_spotify_song %s", response['artists'])
+        print("get_spotify_song", response.get('artists', []))
         # TODO requests.get('')
 
         # print spotify_client.me()
@@ -531,9 +588,10 @@ class DB(object):
 
     def get_jams(self, queued_song_jams_key):
         jams_raw = self._r.zrange(queued_song_jams_key, 0, self.num_jams(queued_song_jams_key), withscores=True)
-        jams = [{"user": user,
-                 "time": datetime.datetime.fromtimestamp(time).isoformat()} for user, time in jams_raw]
-        #jams = [user for user, time in jams_raw]
+        jams = []
+        for user, ts in jams_raw:
+            jams.append({"user": user,
+                         "time": datetime.datetime.fromtimestamp(ts).isoformat()})
         logger.debug("jams for %s: %s" % (queued_song_jams_key, jams))
         return jams
 
@@ -584,9 +642,12 @@ class DB(object):
     def get_comments(self, id):
         key = 'COMMENTS|{0}'.format(id)
         raw_comments = self._r.zrange(key, 0, self._r.zcard(key), withscores=True)
-        comments = [{'time': secs,
-                     'user': text.split('||')[0],
-                     'body': text.split('||')[1]} for text, secs in raw_comments]
+        comments = []
+        for text, secs in raw_comments:
+            parts = text.split('||')
+            comments.append({'time': secs,
+                             'user': parts[0],
+                             'body': parts[1] if len(parts) > 1 else ''})
         logger.debug("comments for %s: %s" % (id, comments))
         return comments
 
@@ -600,19 +661,25 @@ class DB(object):
 
     def benderfilter(self, trackId, userid):
         frontId = self._r.lindex('MISC|fill-songs', 0)
+        logger.debug("benderfilter called: trackId=%s, frontId=%s", trackId, frontId)
         if trackId == frontId:
             #take this off bender's preview and add it to the filter
             self._r.lpop('MISC|fill-songs')
             self._r.setex('FILTER|%s' % frontId, CONF.BENDER_FILTER_TIME, 1)
             self._msg('playlist_update')
-            logger.info("benderfilter " + frontId + " by " + userid)
+            logger.info("benderfilter " + str(frontId) + " by " + userid)
+        else:
+            logger.warning("benderfilter mismatch: trackId=%s != frontId=%s", trackId, frontId)
 
 
     def get_song_from_queue(self, id):
         key = 'QUEUE|{0}'.format(id)
         data = self._r.hgetall(key)
         if 'duration' in data:
-            data['duration'] = int(data['duration'])
+            try:
+                data['duration'] = int(float(data['duration']))
+            except (ValueError, TypeError):
+                data['duration'] = 0
         if 'auto' in data:
             data['auto'] = (data['auto'] == 'True')
         else:
@@ -623,7 +690,20 @@ class DB(object):
 
     def set_song_in_queue(self, id, data):
         key = 'QUEUE|{0}'.format(id)
-        self._r.hmset(key, data)
+        # Redis requires string values - serialize complex types
+        serialized_data = {}
+        for k, v in data.items():
+            if isinstance(v, (dict, list)):
+                serialized_data[k] = json.dumps(v)
+            elif isinstance(v, bool):
+                serialized_data[k] = str(v)
+            elif isinstance(v, datetime.datetime):
+                serialized_data[k] = v.isoformat()
+            elif v is None:
+                serialized_data[k] = ''
+            else:
+                serialized_data[k] = str(v) if not isinstance(v, str) else v
+        self._r.hset(key, mapping=serialized_data)
         self._r.expire(key, 24*60*60)
 
     def nuke_queue(self, email):
@@ -637,9 +717,13 @@ class DB(object):
     def get_additional_src(self):
         raw = self._r.hgetall('MISC|backup-queue-data')
         if not raw:
-            # Avoid infinite loops if fill songs can't be fetched (e.g., invalid Spotify creds).
+            # Avoid infinite loops if fill songs can't be fetched (e.g., invalid Spotify creds)
             for _ in range(5):
-                self.ensure_fill_songs()  # so we have something to preview
+                try:
+                    self.ensure_fill_songs()  # so we have something to preview
+                except Exception as e:
+                    logger.warning("Failed to ensure fill songs: %s", e)
+                    break
                 fillSong = self._r.lindex('MISC|fill-songs', 0)
                 if not fillSong:
                     break
@@ -659,8 +743,9 @@ class DB(object):
                     logger.error('backtrace just to be sure: %s', traceback.format_exc())
                     self._r.lpop('MISC|fill-songs')
 
-            # Fallback when fill songs are unavailable; prevents /queue timeout.
-            return {'playlist_src': True}
+            # Fallback when fill songs are unavailable; prevents /queue timeout
+            return {'playlist_src': True, 'name': 'Benderbot', 'user': 'the@echonest.com',
+                    'title': 'No songs available', 'img': '', 'jam': [], 'dm_buttons': False}
 
         raw['playlist_src'] = True
         return raw
@@ -691,7 +776,10 @@ class DB(object):
                 #got something from a human, set last-queued and clear fill-songs
                 self._r.set('MISC|last-queued', data['trackid'])
                 self._r.delete('MISC|fill-songs')
-                self.ensure_fill_songs()
+                try:
+                    self.ensure_fill_songs()
+                except Exception as e:
+                    logger.warning("Failed to ensure fill songs: %s", e)
                 self._r.delete('MISC|bender_streak_start')
 
             if not data:
@@ -714,9 +802,7 @@ class DB(object):
         if use_estimate:
             end_time = self._r.get('MISC|current-done')
             if end_time:
-                parsed = _pickle_load(end_time)
-                if parsed:
-                    end_time = parsed.isoformat()
+                end_time = pickle_load_b64(end_time).isoformat()
 
         if not end_time:
             end_time = self.player_now().isoformat()
@@ -732,10 +818,8 @@ class DB(object):
             rv['endtime'] = self.song_end_time(use_estimate=True)
             rv['pos'] = 0
             if p_endtime:
-                parsed = _pickle_load(p_endtime)
-                if parsed:
-                    remaining = (parsed - self.player_now()).total_seconds()
-                    rv['pos'] = int(max(0, rv['duration'] - remaining))
+                remaining = (pickle_load_b64(p_endtime) - self.player_now()).total_seconds()
+                rv['pos'] = int(max(0,rv['duration'] - remaining))
 
         paused = self._r.get('MISC|paused')
         rv['paused'] = False
@@ -835,7 +919,7 @@ class DB(object):
 
         size = new_score - current_score
         logger.info("size:" + str(size))
-        self._r.zincrby('MISC|priority-queue', id, size)
+        self._r.zincrby('MISC|priority-queue', size, id)
         self._msg('playlist_update')
 
     def kill_playing(self, email):
@@ -869,23 +953,23 @@ class DB(object):
                     break
 
     def get_horns(self):
-        rv = [json.loads(x) for x in self._r.lrange('AIRHORNS', 0, -1)]
+        raw = self._r.lrange('AIRHORNS', 0, -1)
+        rv = []
+        for x in raw:
+            rv.append(json.loads(x))
         rv.reverse()
         return rv
 
-    def _do_horn(self, userid, free, name):
-        playing = self.get_now_playing() or {}
+    def _do_horn(self, userid, free, name=None):
+        playing = self.get_now_playing()
         if not playing:
-            logger.info('airhorn triggered without now playing')
-        horn = dict(
-            img=playing.get('img', ''),
-            songid=playing.get('id', ''),
-            when=_now().isoformat(),
-            free=free,
-            user=userid,
-            artist=playing.get('artist', ''),
-            title=playing.get('title', ''),
-        )
+            logger.warning("Cannot airhorn - no song playing")
+            return
+        horn = dict(img=playing.get('img', ''),
+                    songid=playing.get('id', ''),
+                    when=_now().isoformat(),
+                    free=free, user=userid, artist=playing.get('artist', ''),
+                    title=playing.get('title', ''))
         self._r.rpush('AIRHORNS', json.dumps(horn))
         self._msg('do_airhorn|0.4|%s' % name)  # volume of airhorn - may need to be tweaked, random choice for airhorn
 
@@ -917,7 +1001,7 @@ class DB(object):
         new_vol = max(0, int(new_vol))
 #        print new_vol
         new_vol = min(100, new_vol)
-        logger.debug("set_volume %s", new_vol)
+        print("set_volume", new_vol)
         self._r.set('MISC|volume', new_vol)
         self._msg('v|'+str(new_vol))
         logger.info('set_volume in pct %s', new_vol)
@@ -929,8 +1013,7 @@ class DB(object):
     def try_login(self, email, passwd):
         email = email.lower()
         d = self._r.hget('MISC|guest-login-expire', email)
-        loaded = _pickle_load(d)
-        if not d or not loaded or loaded < _now():
+        if not d or pickle_load_b64(d) < _now():
             self._r.hdel('MISC|guest-login', email)
             return False
         full_pass = self._r.hget('MISC|guest-login', email)
@@ -956,7 +1039,7 @@ class DB(object):
                     if 4 < len(x) < 8]
         random.shuffle(words)
         passwd = ''.join(x.title() for x in words[:2])
-        self._r.hset('MISC|guest-login-expire', email, _pickle_dump(expires))
+        self._r.hset('MISC|guest-login-expire', email, pickle_dump_b64(expires))
         self._r.hset('MISC|guest-login', email, passwd)
         self.send_email(email, "Welcome to Andre!",
                         render_template('welcome_email.txt',

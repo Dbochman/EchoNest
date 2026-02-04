@@ -1,80 +1,113 @@
-Andre / Prosecco (Resurrection Notes)
-=
+# Andre
 
-This repo is an older internal “office radio” app. Below are modern setup notes
-for bringing it back locally or in a container.
+A collaborative music queue system for offices and parties. Users can search for songs, add them to a shared queue, vote on songs, and enjoy features like airhorns and "bender mode" (auto-fill).
 
-Quickstart (Docker Compose)
-1. Copy config template:
-   - `cp config.example.yaml local_config.yaml`
-2. Fill in required secrets in `local_config.yaml`:
-   - Google OAuth client ID/secret
-   - Spotify client ID/secret
-   - YouTube/SoundCloud keys (if needed)
-3. Run:
-   - `docker-compose up --build`
-4. Open:
-   - `http://localhost:5000/`
+## Features
 
-Dev-only auth bypass
-- Set `DEBUG=True` and `DEV_AUTH_EMAIL=dev@example.com` (via env or `local_config.yaml`).
-- The app will auto-login on localhost only when DEBUG is true.
+- Spotify integration for music search and playback
+- Real-time WebSocket updates for queue changes
+- Voting system to promote/demote songs in queue
+- "Jam" button for showing appreciation
+- Airhorn sound effects
+- Bender mode: auto-fills queue with recommendations when empty
+- Guest login system
+- Comments on songs
 
-Google OAuth
-- Set redirect URL to:
-  - `http://localhost:5000/authentication/callback`
+## Setup
 
-Environment overrides (optional)
-- `REDIS_HOST`, `REDIS_PORT`, `DEV_AUTH_EMAIL`, `DEBUG`
+### Prerequisites
 
-Tests
-- `SKIP_SPOTIFY_PREFETCH=1 pytest`
+- Python 3.10+
+- Redis
+- PostgreSQL (optional, for user data)
+- Spotify Developer Account
+- Google Cloud Console project (for OAuth)
 
----
+### Configuration
 
-Welcome t o Andre!
-=
+1. Copy the example config:
+   ```bash
+   cp config.example.yaml local_config.yaml
+   ```
 
-Andre is how the Spotify Boston listens to music; we've given you guest access
-until {{expires}}.
+2. Edit `local_config.yaml` with your credentials:
 
-There are some rules that we ask you to follow, the same rules we give our
-employees.
+   **Required - Spotify:**
+   - Create an app at https://developer.spotify.com/dashboard
+   - Set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`
+   - Add `http://localhost:5000/authentication/spotify_callback` to redirect URIs
 
-1. Please put things on the office playlist. We want to hear what you like!
+   **Required - Google OAuth:**
+   - Create credentials at https://console.cloud.google.com/apis/credentials
+   - Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+   - Add `http://localhost:5000/authentication/callback` to authorized redirect URIs
 
-2. Variety is fun. Put on one or two songs by a given artist, or a handful in 
-   a genre, and then give someone or something else a turn. Weirdness is fine,
-   but you may find that short weirdnesses are more readily appreciated than
-   long ones.
+   **Email Domain Restriction:**
+   ```yaml
+   ALLOWED_EMAIL_DOMAINS:
+     - gmail.com
+     - yourdomain.com
+   ```
 
-3. Please don't skip a song once it starts playing. Somebody picked it and
-   has been eagerly waiting for it to come on!
+   **Dev Mode (optional):**
+   ```yaml
+   DEBUG: true
+   DEV_AUTH_EMAIL: "yourname@gmail.com"
+   ```
+   When DEBUG is true and you're on localhost, the dev email bypasses OAuth.
 
-4. Anybody is always allowed to lower the volume for any reason. (Go to the volume
-   tab on the left and adjust the volume on your floor instead of the main
-   overall volume.) If the volume has been down for a while, feel free to turn
-   it up a little again.
+### Running with Docker
 
-5. When in doubt, put on your headphones.
+```bash
+# Start all services
+docker-compose up --build
 
-It's also worth mentioning we have some songs we play on special occassions; there
-are buttons to play those songs under the "Other" tab. You probably shouldn't push
-those. "play music here", "show os notifications", and "hide shame" are all fair
-game; feel free to click those and see what they do.
+# The app will be available at http://localhost:5000
+```
 
-If you have a picture on http://www.gravatar.com/, we'll display that as your user
-image.
+### Running Locally
 
-Log in with your email and password
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-{{email}} / {{passwd}}
+# Start Redis (if not using Docker)
+redis-server
 
-at the url
+# Run the app
+python run.py
+```
 
-http://andre.spotify.net
+## Usage
 
+1. Visit http://localhost:5000
+2. Log in with Google (must use an allowed email domain)
+3. Search for songs in the Spotify tab
+4. Click a result to add it to the queue
+5. Vote on songs to change their position
+6. Click "Jam" to show you like a song
 
-Regards,
+## API Endpoints
 
-Andre
+- `GET /health` - Health check
+- `GET /playing/` - Current playing song
+- `GET /queue/` - Current queue
+- `POST /add_song` - Add a song (email, track_uri)
+- `POST /jam` - Jam a song (email, id)
+- `POST /blast_airhorn` - Trigger airhorn (email, name)
+- `GET /search/v2?q=` - Search Spotify
+
+## Environment Variables
+
+These override `local_config.yaml`:
+
+- `REDIS_HOST` - Redis hostname (default: localhost)
+- `REDIS_PORT` - Redis port (default: 6379)
+- `DEBUG` - Enable debug mode (true/false)
+- `DEV_AUTH_EMAIL` - Email for dev bypass auth
+- `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+
+## License
+
+Internal use.

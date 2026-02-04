@@ -36,9 +36,10 @@ sc_player.stop = function() {
 }
 sc_player.set_volume = function(vol) {
     try {
-        sc_player.stream.setVolume(vol/100);
+        if (sc_player.stream && sc_player.stream.setVolume) {
+            sc_player.stream.setVolume(vol/100);
+        }
     } catch (e) {
       console.log(e);
     }
-
 }

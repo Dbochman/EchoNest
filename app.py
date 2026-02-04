@@ -1,18 +1,19 @@
 from gevent import monkey
 monkey.patch_all()
 
-import os
+import os.path
 import logging
 import json
 import datetime
 import hashlib
+import urllib.parse
+import urllib.request
 import socket as psocket
 import gevent
 import redis
 import requests
 import time
 import psycopg2
-from urllib.parse import urlencode
 
 import spotipy.oauth2
 import spotipy
@@ -32,23 +33,34 @@ app.config['GOOGLE_DOMAIN'] = 'spotify.com'
 app.url_map.strict_slashes = False
 #auth = GoogleAuth(app)
 
+print(CONF)
+
 def _get_authenticated_email():
+    """Get authenticated email from session or dev bypass."""
     email = session.get('email')
     if email:
         return email
-    if CONF.DEBUG and CONF.DEV_AUTH_EMAIL and request.host.startswith(('localhost', '127.0.0.1')):
+    if CONF.DEBUG and CONF.DEV_AUTH_EMAIL and request.host.split(':')[0] in ('localhost', '127.0.0.1'):
         session['email'] = CONF.DEV_AUTH_EMAIL
         session['fullname'] = 'Dev User'
         return session['email']
     return None
 
 def _handle_websocket():
+    """Handle WebSocket connections in before_request (before Flask route dispatch)."""
     if request.environ.get('wsgi.websocket') is None:
         return 'WebSocket required', 400
     email = _get_authenticated_email()
     if not email:
         return 'Unauthorized', 401
     MusicNamespace(email, 0).serve()
+    return ''
+
+def _handle_volume_websocket():
+    """Handle volume WebSocket connections."""
+    if request.environ.get('wsgi.websocket') is None:
+        return 'WebSocket required', 400
+    VolumeNamespace().serve()
     return ''
 
 def __setup_bundles():
@@ -63,20 +75,8 @@ __setup_bundles()
 d = DB(False)
 logger.setLevel(logging.DEBUG)
 
-def _redis_client():
-    redis_host = CONF.REDIS_HOST or 'localhost'
-    redis_port = int(CONF.REDIS_PORT) if CONF.REDIS_PORT else 6379
-    return redis.Redis(
-        host=redis_host,
-        port=redis_port,
-        decode_responses=True,
-        encoding_errors='surrogateescape',
-    )
-
-
 auth = spotipy.oauth2.SpotifyClientCredentials(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET)
-if not os.environ.get("SKIP_SPOTIFY_PREFETCH"):
-    auth.get_access_token()
+auth.get_access_token()
 
 #keeping a list of airhorns for mobile client
 airhorns = set()
@@ -87,6 +87,9 @@ if CONF.DEBUG:
     assets.debug = True
 
 app.secret_key = CONF.SECRET_KEY
+# Session cookie settings for browser compatibility
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
 
 class ProseccoAPIError(Exception):
     status_code = 400
@@ -132,10 +135,11 @@ class WebSocketManager(object):
                 with gevent.Timeout(30, False):
                     msg = self._ws.receive()
                 if msg is None:
+                    # Timeout - check if connection is still open
                     if getattr(self._ws, 'closed', False):
                         logger.info('WebSocket closed by client')
                         break
-                    # No message yet (timeout); keep connection open.
+                    # No message yet (timeout); keep connection open
                     continue
                 if msg == '' and msg != '0':
                     if getattr(self._ws, 'closed', False):
@@ -163,14 +167,11 @@ class WebSocketManager(object):
                     return
         except Exception:
             logger.exception('WebSocket fatal error')
-            _ws_log('fatal error')
-            raise
         finally:
             try:
                 self._ws.close()
             except Exception:
                 logger.exception('WebSocket close failed')
-                _ws_log('close failed')
             gevent.killall(self._children)
 
 
@@ -184,53 +185,42 @@ class MusicNamespace(WebSocketManager):
             pass
         self.logger = app.logger
         self.email = email
-        print(self.email)
+        print(self.email) 
         self.penalty = penalty
-        self.auth = None
-        if CONF.SPOTIFY_CLIENT_ID and CONF.SPOTIFY_CLIENT_SECRET:
-            try:
-                self.auth = spotipy.oauth2.SpotifyOAuth(
-                    CONF.SPOTIFY_CLIENT_ID,
-                    CONF.SPOTIFY_CLIENT_SECRET,
-                    SPOTIFY_REDIRECT_URI,
-                    "prosecco:%s" % email,
-                    scope="streaming user-read-currently-playing",
-                    cache_path="%s/%s" % (CONF.OAUTH_CACHE_PATH, email),
-                )
-            except Exception:
-                logger.exception('Failed to initialize Spotify OAuth; continuing without')
+        self.auth = spotipy.oauth2.SpotifyOAuth(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
+                                                "prosecco:%s" % email, scope="streaming user-read-currently-playing", cache_path="%s/%s" % (CONF.OAUTH_CACHE_PATH, email))
         self.spawn(self.listener)
         self.log('New namespace for {0}'.format(self.email))
 
     def listener(self):
-        r = _redis_client().pubsub()
+        r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379, decode_responses=True).pubsub()
         r.subscribe('MISC|update-pubsub')
         for m in r.listen():
             if m['type'] != 'message':
                 continue
-            m = m['data']
+            msg = m['data']
 
-            if m == 'playlist_update':
+            if msg == 'playlist_update':
                 self.on_fetch_playlist()
-            elif m == 'now_playing_update':
+            elif msg == 'now_playing_update':
                 self.on_fetch_now_playing()
                 self.on_fetch_playlist()
-            elif m.startswith('pp|'):
+            elif msg.startswith('pp|'):
                 #self.log('sending position update to {0}'.format(self.email))
-                _, src, track, pos = m.split('|', 3)
+                _, src, track, pos = msg.split('|', 3)
 #                logger.debug(session['spotify_token'])
                 self.emit('player_position', src, track, int(pos))
-            elif m.startswith('v|'):
-                _, msg = m.split('|', 1)
-                self.emit('volume', msg)
-            elif m.startswith('do_airhorn'):
-                _, v, c = m.split('|', 2)
+            elif msg.startswith('v|'):
+                _, vol = msg.split('|', 1)
+                self.emit('volume', vol)
+            elif msg.startswith('do_airhorn'):
+                _, v, c = msg.split('|', 2)
                 self.logger.info('about to emit')
                 self.emit('do_airhorn', v, c)
-            elif m.startswith('no_airhorn'):
-                _, msg = m.split('|', 1)
-                self.emit('no_airhorn', json.loads(msg))
-            elif m == 'update_freehorn':
+            elif msg.startswith('no_airhorn'):
+                _, data = msg.split('|', 1)
+                self.emit('no_airhorn', json.loads(data))
+            elif msg == 'update_freehorn':
                 self.emit('free_horns', d.get_free_horns(self.email))
 
     def log(self, msg, debug=True):
@@ -267,21 +257,19 @@ class MusicNamespace(WebSocketManager):
 
     def on_fetch_search_token(self):
         logger.debug("fetch search token")
-        if not CONF.SPOTIFY_CLIENT_ID or not CONF.SPOTIFY_CLIENT_SECRET:
-            logger.info('Spotify search token unavailable: missing client credentials')
-            return
-        try:
-            token = auth.get_access_token()
-            self.emit('search_token_update', dict(token=auth.token_info['access_token'],
-                                                time_left=int(auth.token_info['expires_at'] - time.time())))
-        except Exception:
-            logger.exception('Failed to fetch Spotify search token')
+        token_info = auth.get_access_token()
+        # Handle get_access_token returning dict in newer spotipy versions
+        if isinstance(token_info, dict):
+            access_token = token_info.get('access_token')
+            expires_at = token_info.get('expires_at', time.time() + 3600)
+        else:
+            access_token = auth.token_info['access_token']
+            expires_at = auth.token_info['expires_at']
+        self.emit('search_token_update', dict(token=access_token,
+                                            time_left=int(expires_at - time.time())))
 
     def on_fetch_auth_token(self):
         logger.debug("fetch auth token")
-        if not self.auth:
-            logger.info('Spotify auth unavailable for %s', self.email)
-            return
         token = self.auth.get_cached_token()
         if token:
             logger.debug("update")
@@ -380,33 +368,42 @@ class VolumeNamespace(WebSocketManager):
         self.emit('volume', str(d.set_volume(vol)))
 
     def listener(self):
-        r = _redis_client().pubsub()
+        r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379, decode_responses=True).pubsub()
         r.subscribe('MISC|update-pubsub')
         for m in r.listen():
             if m['type'] != 'message':
                 continue
-            if m['data'].startswith('v|'):
-                _, msg = m['data'].split('|', 1)
-                self.emit('volume', msg)
+            data = m['data']
+            if data.startswith('v|'):
+                _, vol = data.split('|', 1)
+                self.emit('volume', vol)
 
 
 @app.context_processor
 def inject_config():
     return dict(CONF=CONF)
 
-SAFE_PATHS = (u'/login/', u'/logout/', u'/playing/', u'/queue/', u'/volume/',
-              u'/guest', u'/guest/', u'/api/jammit/', u'/health', u'/health/',
-              u'/socket', u'/socket/',
-              u'/authentication/callback', u'/token', u'/last/', u'/airhorns/', u'/z/')
-SAFE_PARAM_PATHS = (u'/history', u'/user_history', u'/user_jam_history', u'/search/v2', u'/add_song',
-    u'/blast_airhorn', u'/airhorn_list', u'/queue/', u'/jam')
-VALID_HOSTS = (u'localhost:5000', u'127.0.0.1:5000', str(CONF.HOSTNAME)) if CONF.HOSTNAME else (u'localhost:5000', u'127.0.0.1:5000')
+SAFE_PATHS = ('/login/', '/logout/', '/playing/', '/queue/', '/volume/',
+              '/guest', '/guest/', '/api/jammit/', '/health',
+              '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/')
+SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/add_song',
+    '/blast_airhorn', '/airhorn_list', '/queue/', '/jam')
+VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:5001',
+               str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
 
 
 @app.before_request
 def require_auth():
-    if request.path.startswith('/socket') and request.headers.get('Upgrade', '').lower() == 'websocket':
-        return _handle_websocket()
+    # Handle WebSocket upgrades BEFORE Flask route dispatch
+    # gevent-websocket requires handling at this level, not in Flask routes
+    if request.headers.get('Upgrade', '').lower() == 'websocket':
+        if request.path.startswith('/socket'):
+            logger.debug(f"WebSocket upgrade request for /socket")
+            return _handle_websocket()
+        elif request.path.startswith('/volume'):
+            logger.debug(f"WebSocket upgrade request for /volume")
+            return _handle_volume_websocket()
+
     if CONF.HOSTNAME and request.host not in VALID_HOSTS:
         return redirect('http://%s' % CONF.HOSTNAME)
     if request.path in SAFE_PATHS:
@@ -417,10 +414,14 @@ def require_auth():
     if request.path.startswith('/static/'):
         return
     if 'email' not in session:
-        if CONF.DEBUG and CONF.DEV_AUTH_EMAIL and request.host.startswith('localhost'):
-            session['email'] = CONF.DEV_AUTH_EMAIL
-            session['fullname'] = 'Dev User'
-            return
+        # Dev-only bypass: only works in DEBUG mode on localhost
+        if CONF.DEBUG and CONF.DEV_AUTH_EMAIL:
+            host = request.host.split(':')[0]
+            if host in ('localhost', '127.0.0.1'):
+                session['email'] = CONF.DEV_AUTH_EMAIL
+                session['fullname'] = 'Dev User'
+                return
+        # Redirect to login for unauthenticated requests
         return redirect('/login/')
 
 
@@ -435,13 +436,18 @@ def add_cors_header(response):
     response.headers.set('Access-Control-Allow-Origin', '*')
     return response
 
-
 if CONF.DEBUG:
-    REDIRECT_URI = "http://localhost:5000/authentication/callback"
-    SPOTIFY_REDIRECT_URI = "http://localhost:5000/authentication/spotify_callback"
+    # Use HOSTNAME config even in debug mode
+    host = CONF.HOSTNAME or 'localhost:5000'
+    REDIRECT_URI = "http://{}/authentication/callback".format(host)
+    SPOTIFY_REDIRECT_URI = "http://{}/authentication/spotify_callback".format(host)
 else:
     REDIRECT_URI = "http://%s/authentication/callback" % CONF.HOSTNAME
     SPOTIFY_REDIRECT_URI = "http://%s/authentication/spotify_callback" % CONF.HOSTNAME
+
+@app.route('/health')
+def health():
+    return jsonify(status='ok')
 
 @app.route('/bounce/', methods=['GET'])
 def bounce():
@@ -464,7 +470,7 @@ def login():
                 response_type="code", client_id=CONF.GOOGLE_CLIENT_ID,
                 approval_prompt="auto", access_type="online")
     url = "https://accounts.google.com/o/oauth2/auth?{}".format(
-        urlencode(args))
+        urllib.parse.urlencode(args))
     return redirect(url)
 
 
@@ -477,10 +483,28 @@ def auth_callback():
                   grant_type="authorization_code")
     r = requests.post("https://accounts.google.com/o/oauth2/token",
                       data=params).json()
+    if 'access_token' not in r:
+        logger.error('OAuth failed: %s', r)
+        return redirect('/login/')
     token = r['access_token']
     user = requests.get('https://www.googleapis.com/oauth2/v1/userinfo',
                         params=dict(access_token=token), verify=False).json()
-    if not user['email'].endswith('@spotify.com'):
+
+    # Check email domain against allowed list
+    email = user.get('email', '')
+    allowed_domains = CONF.ALLOWED_EMAIL_DOMAINS or []
+    # Ensure it's a list (handle case where config has a single string)
+    if isinstance(allowed_domains, str):
+        allowed_domains = [allowed_domains]
+
+    email_allowed = False
+    for domain in allowed_domains:
+        if email.endswith('@' + domain):
+            email_allowed = True
+            break
+
+    if not email_allowed:
+        logger.warning('Login rejected for email: %s (allowed domains: %s)', email, allowed_domains)
         return redirect('/login/')
 
     for k1, k2 in (('email', 'email',), ('fullname', 'name'),):
@@ -524,17 +548,6 @@ def playing():
     rv['now'] = datetime.datetime.now().isoformat()
     return jsonify(**rv)
 
-@app.route('/health')
-def health():
-    status = {'ok': True, 'time': datetime.datetime.now().isoformat()}
-    try:
-        _redis_client().ping()
-        status['redis'] = True
-    except Exception as exc:
-        status['ok'] = False
-        status['redis'] = False
-        status['redis_error'] = str(exc)
-    return jsonify(status), (200 if status['ok'] else 503)
 
 @app.route('/queue/')
 def queue():
@@ -560,19 +573,18 @@ def main():
     return render_template('main.html')
 
 
-@app.route('/socket')
 @app.route('/socket/')
 def socket():
-    if request.headers.get('Upgrade', '').lower() == 'websocket':
-        return _handle_websocket()
+    # WebSocket connections are handled in before_request hook
+    # This route is a fallback for non-WebSocket requests
     return 'WebSocket required', 400
 
 
 @app.route('/volume/')
 def volume():
-    print('VOLUME IN')
-    VolumeNamespace().serve()
-    return ''
+    # WebSocket connections are handled in before_request hook
+    # This route is a fallback for non-WebSocket requests
+    return 'WebSocket required', 400
 
 
 @app.route('/get_volume/')
@@ -696,7 +708,11 @@ def user_jam_history_api(userid):
 @app.route('/search/v2', methods=['GET'])
 def search_spotify():
     q = request.values['q']
-    sp = spotipy.Spotify(auth=auth.get_access_token())
+    # Handle get_access_token returning dict in newer spotipy versions
+    token = auth.get_access_token()
+    if isinstance(token, dict):
+        token = token.get('access_token', token)
+    sp = spotipy.Spotify(auth=token)
     search_result = sp.search(q, 25)
     
     parsed_result = []
