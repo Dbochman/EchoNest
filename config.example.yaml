@@ -71,7 +71,7 @@ BUNDLES:
     files:
       - bootstrap.min.css
       - font-awesome.min.css
-      - style.css
+      - app.css
 
 # Cache buster for static assets
 CACHE_BUSTER: "2024-01-01"
