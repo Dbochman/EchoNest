@@ -1,5 +1,47 @@
 // app.js
 
+// Color themes for the UI
+var COLOR_THEMES = [
+    { name: 'Spotify Green', accent: '#1ed760', accentRgb: '30, 215, 96', hover: '#6bfc61', hoverRgb: '107, 252, 97' },
+    { name: 'Purple', accent: '#b366ff', accentRgb: '179, 102, 255', hover: '#cc99ff', hoverRgb: '204, 153, 255' },
+    { name: 'Blue', accent: '#1db4d4', accentRgb: '29, 180, 212', hover: '#5dd3e8', hoverRgb: '93, 211, 232' },
+    { name: 'Pink', accent: '#ff66b2', accentRgb: '255, 102, 178', hover: '#ff99cc', hoverRgb: '255, 153, 204' },
+    { name: 'Orange', accent: '#ff9933', accentRgb: '255, 153, 51', hover: '#ffb366', hoverRgb: '255, 179, 102' },
+    { name: 'Red', accent: '#ff4d4d', accentRgb: '255, 77, 77', hover: '#ff8080', hoverRgb: '255, 128, 128' },
+    { name: 'Gold', accent: '#ffd700', accentRgb: '255, 215, 0', hover: '#ffe44d', hoverRgb: '255, 228, 77' },
+    { name: 'Cyan', accent: '#00ffff', accentRgb: '0, 255, 255', hover: '#66ffff', hoverRgb: '102, 255, 255' },
+];
+var currentColorIndex = 0;
+
+function changeColors() {
+    currentColorIndex = (currentColorIndex + 1) % COLOR_THEMES.length;
+    var theme = COLOR_THEMES[currentColorIndex];
+    document.documentElement.style.setProperty('--accent-color', theme.accent);
+    document.documentElement.style.setProperty('--accent-color-rgb', theme.accentRgb);
+    document.documentElement.style.setProperty('--accent-hover', theme.hover);
+    document.documentElement.style.setProperty('--accent-hover-rgb', theme.hoverRgb);
+    // Save preference
+    try {
+        localStorage.setItem('andre-color-theme', currentColorIndex);
+    } catch(e) {}
+}
+
+function loadSavedColorTheme() {
+    try {
+        var saved = localStorage.getItem('andre-color-theme');
+        if (saved !== null) {
+            currentColorIndex = parseInt(saved, 10);
+            if (currentColorIndex >= 0 && currentColorIndex < COLOR_THEMES.length) {
+                var theme = COLOR_THEMES[currentColorIndex];
+                document.documentElement.style.setProperty('--accent-color', theme.accent);
+                document.documentElement.style.setProperty('--accent-color-rgb', theme.accentRgb);
+                document.documentElement.style.setProperty('--accent-hover', theme.hover);
+                document.documentElement.style.setProperty('--accent-hover-rgb', theme.hoverRgb);
+            }
+        }
+    } catch(e) {}
+}
+
 function is_hohoholiday(){
     var now = new Date();
     return now.getMonth() == 11 &&
@@ -1294,7 +1336,11 @@ window.addEventListener('load', function(){
     $('#search-results').on('click', '.playlist-result',
                                     playlist_result_click);
     $('#make-player').on('click', make_player);
-    
+    $('#change-color').on('click', changeColors);
+
+    // Load saved color theme
+    loadSavedColorTheme();
+
     $('#volume-tab').on('change', 'input', _.throttle(volume_change, 300));
 
     playlist_view = new PlaylistView({collection: playlist,
