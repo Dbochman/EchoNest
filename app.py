@@ -30,9 +30,38 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 assets = Environment(app)
 app.config['GOOGLE_DOMAIN'] = 'spotify.com'
-#auth = GoogleAuth(app) 
+app.url_map.strict_slashes = False
+#auth = GoogleAuth(app)
 
 print(CONF)
+
+def _get_authenticated_email():
+    """Get authenticated email from session or dev bypass."""
+    email = session.get('email')
+    if email:
+        return email
+    if CONF.DEBUG and CONF.DEV_AUTH_EMAIL and request.host.split(':')[0] in ('localhost', '127.0.0.1'):
+        session['email'] = CONF.DEV_AUTH_EMAIL
+        session['fullname'] = 'Dev User'
+        return session['email']
+    return None
+
+def _handle_websocket():
+    """Handle WebSocket connections in before_request (before Flask route dispatch)."""
+    if request.environ.get('wsgi.websocket') is None:
+        return 'WebSocket required', 400
+    email = _get_authenticated_email()
+    if not email:
+        return 'Unauthorized', 401
+    MusicNamespace(email, 0).serve()
+    return ''
+
+def _handle_volume_websocket():
+    """Handle volume WebSocket connections."""
+    if request.environ.get('wsgi.websocket') is None:
+        return 'WebSocket required', 400
+    VolumeNamespace().serve()
+    return ''
 
 def __setup_bundles():
     for name, conf in CONF.get('BUNDLES', {}).items():
@@ -58,6 +87,9 @@ if CONF.DEBUG:
     assets.debug = True
 
 app.secret_key = CONF.SECRET_KEY
+# Session cookie settings for browser compatibility
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
 
 class ProseccoAPIError(Exception):
     status_code = 400
@@ -102,8 +134,20 @@ class WebSocketManager(object):
                 msg = None
                 with gevent.Timeout(30, False):
                     msg = self._ws.receive()
-                if not msg and msg != '0':
-                    break
+                if msg is None:
+                    # Timeout - check if connection is still open
+                    if getattr(self._ws, 'closed', False):
+                        logger.info('WebSocket closed by client')
+                        break
+                    # No message yet (timeout); keep connection open
+                    continue
+                if msg == '' and msg != '0':
+                    if getattr(self._ws, 'closed', False):
+                        logger.info('WebSocket closed by client')
+                        break
+                    continue
+                if isinstance(msg, bytes):
+                    msg = msg.decode('utf-8', 'ignore')
                 T = msg[0]
                 if T == '1':
                     data = json.loads(msg[1:]) if len(msg) > 1 else None
@@ -111,15 +155,23 @@ class WebSocketManager(object):
                         continue
                     event = data[0]
                     args = data[1:]
-                    getattr(self, 'on_' + event.replace('-', '_'))(*args)
+                    try:
+                        getattr(self, 'on_' + event.replace('-', '_'))(*args)
+                    except Exception:
+                        logger.exception('Socket handler error for event: %s', event)
                 elif T == '0':
                     pass
                 else:
                     print(T, msg)
                     print('Invalid msg type')
                     return
+        except Exception:
+            logger.exception('WebSocket fatal error')
         finally:
-            self._ws.close()
+            try:
+                self._ws.close()
+            except Exception:
+                logger.exception('WebSocket close failed')
             gevent.killall(self._children)
 
 
@@ -141,15 +193,12 @@ class MusicNamespace(WebSocketManager):
         self.log('New namespace for {0}'.format(self.email))
 
     def listener(self):
-        r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379).pubsub()
+        r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379, decode_responses=True).pubsub()
         r.subscribe('MISC|update-pubsub')
         for m in r.listen():
             if m['type'] != 'message':
                 continue
             msg = m['data']
-            # Decode bytes from Redis pubsub
-            if isinstance(msg, bytes):
-                msg = msg.decode('utf-8')
 
             if msg == 'playlist_update':
                 self.on_fetch_playlist()
@@ -319,14 +368,12 @@ class VolumeNamespace(WebSocketManager):
         self.emit('volume', str(d.set_volume(vol)))
 
     def listener(self):
-        r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379).pubsub()
+        r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379, decode_responses=True).pubsub()
         r.subscribe('MISC|update-pubsub')
         for m in r.listen():
             if m['type'] != 'message':
                 continue
             data = m['data']
-            if isinstance(data, bytes):
-                data = data.decode('utf-8')
             if data.startswith('v|'):
                 _, vol = data.split('|', 1)
                 self.emit('volume', vol)
@@ -347,6 +394,16 @@ VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:
 
 @app.before_request
 def require_auth():
+    # Handle WebSocket upgrades BEFORE Flask route dispatch
+    # gevent-websocket requires handling at this level, not in Flask routes
+    if request.headers.get('Upgrade', '').lower() == 'websocket':
+        if request.path.startswith('/socket'):
+            logger.debug(f"WebSocket upgrade request for /socket")
+            return _handle_websocket()
+        elif request.path.startswith('/volume'):
+            logger.debug(f"WebSocket upgrade request for /volume")
+            return _handle_volume_websocket()
+
     if CONF.HOSTNAME and request.host not in VALID_HOSTS:
         return redirect('http://%s' % CONF.HOSTNAME)
     if request.path in SAFE_PATHS:
@@ -380,8 +437,10 @@ def add_cors_header(response):
     return response
 
 if CONF.DEBUG:
-    REDIRECT_URI = "http://localhost:5000/authentication/callback"
-    SPOTIFY_REDIRECT_URI = "http://localhost:5000/authentication/spotify_callback"
+    # Use HOSTNAME config even in debug mode
+    host = CONF.HOSTNAME or 'localhost:5000'
+    REDIRECT_URI = "http://{}/authentication/callback".format(host)
+    SPOTIFY_REDIRECT_URI = "http://{}/authentication/spotify_callback".format(host)
 else:
     REDIRECT_URI = "http://%s/authentication/callback" % CONF.HOSTNAME
     SPOTIFY_REDIRECT_URI = "http://%s/authentication/spotify_callback" % CONF.HOSTNAME
@@ -516,15 +575,16 @@ def main():
 
 @app.route('/socket/')
 def socket():
-    MusicNamespace(session['email'], 0).serve()
-    return ''
+    # WebSocket connections are handled in before_request hook
+    # This route is a fallback for non-WebSocket requests
+    return 'WebSocket required', 400
 
 
 @app.route('/volume/')
 def volume():
-    print('VOLUME IN')
-    VolumeNamespace().serve()
-    return ''
+    # WebSocket connections are handled in before_request hook
+    # This route is a fallback for non-WebSocket requests
+    return 'WebSocket required', 400
 
 
 @app.route('/get_volume/')
