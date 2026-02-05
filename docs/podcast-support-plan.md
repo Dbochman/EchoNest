@@ -136,6 +136,40 @@ Also added re-render of playlist on `now_playing_update` to apply filter immedia
 
 **Commit:** `7f97604`
 
+### Spotify Unpause Fix (2026-02-05)
+
+**Issue:** When Andre was paused and then unpaused, Spotify playback would not resume for synced clients. The `last_synced_spotify_track` check in `fix_player()` prevented re-playing the same track.
+
+**Fix:** Added state transition detection in `now_playing_update` handler:
+```javascript
+var wasPaused = playerpaused;
+playerpaused = data.paused;
+// ...
+if (wasPaused && !playerpaused && is_player) {
+    resume_spotify_if_needed();
+}
+```
+
+**Commit:** `1ef478f`
+
+### Spotify 403 Error Fix (2026-02-05)
+
+**Issue:** `resume_spotify_if_needed()` called the bare `/me/player/play` endpoint without a track URI, which requires an active Spotify device. Returns 403 Forbidden if no device is active.
+
+**Fix:** Changed to use `spotify_play()` with the track URI and position:
+```javascript
+function resume_spotify_if_needed() {
+    // ... guards ...
+    var trackid = now_playing.get('trackid');
+    var pos = now_playing.get('pos') || 0;
+    if (trackid) {
+        spotify_play(trackid, pos);  // Includes URI, works without active device
+    }
+}
+```
+
+**Commit:** `f17cccf`
+
 ---
 
 ## Rollback
