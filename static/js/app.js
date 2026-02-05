@@ -170,7 +170,13 @@ var PlaylistView = Backbone.View.extend({
     render: function(){
         var that = this;
         this.$el.empty();
+        // Get the now-playing track ID to filter it out of the queue
+        var nowPlayingId = (now_playing && now_playing.get) ? now_playing.get('id') : null;
         this.collection.each(function(obj){
+            // Skip if this is the currently playing track (prevents duplicates)
+            if (nowPlayingId && obj.get('id') === nowPlayingId) {
+                return;
+            }
             if(obj.get("playlist_src")){
                 var psv = new PlaylistSrcView({model:obj});
             }else{
@@ -751,6 +757,11 @@ socket.on('now_playing_update', function(data){
     // Update skip button text based on content type
     var isPodcast = data.type === 'episode';
     $('#kill-playing').text(isPodcast ? 'skip playing podcast' : 'skip playing song');
+
+    // Re-render playlist to filter out the now-playing track
+    if (typeof playlist_view !== 'undefined') {
+        playlist_view.render();
+    }
 });
 
 var ALIGNMENT_OFF_COUNT = 0;
