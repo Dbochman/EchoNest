@@ -22,7 +22,7 @@ from flask import Flask, request, render_template, session, redirect, jsonify, m
 from flask_assets import Environment, Bundle
 
 from config import CONF
-from db import DB, is_spotify_rate_limited, set_spotify_rate_limit
+from db import DB, is_spotify_rate_limited, set_spotify_rate_limit, handle_spotify_exception
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -736,10 +736,7 @@ def search_spotify():
     try:
         search_result = sp.search(q, 25)
     except spotipy.exceptions.SpotifyException as e:
-        if e.http_status == 429:
-            # Extract retry-after from error and set rate limit
-            retry_after = int(e.headers.get('Retry-After', 3600)) if hasattr(e, 'headers') and e.headers else 3600
-            set_spotify_rate_limit(retry_after)
+        if handle_spotify_exception(e):
             resp = jsonify({"error": "Spotify rate limited. Please try again later."})
             resp.status_code = 429
             return resp

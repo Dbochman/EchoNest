@@ -73,6 +73,16 @@ def set_spotify_rate_limit(retry_after_seconds):
     _spotify_rate_limit_until = datetime.datetime.now() + datetime.timedelta(seconds=retry_after_seconds)
     logger.warning("Spotify rate limited until %s (%d seconds)", _spotify_rate_limit_until, retry_after_seconds)
 
+def handle_spotify_exception(e):
+    """Check if exception is a rate limit and set tracker. Returns True if rate limited."""
+    if hasattr(e, 'http_status') and e.http_status == 429:
+        retry_after = 3600  # Default 1 hour
+        if hasattr(e, 'headers') and e.headers:
+            retry_after = int(e.headers.get('Retry-After', 3600))
+        set_spotify_rate_limit(retry_after)
+        return True
+    return False
+
 
 def _now():
     return datetime.datetime.now()
@@ -204,7 +214,9 @@ class DB(object):
             song_deets = spotify_client.track(seed_song)
             seed_artists = [(a['id'], a['name']) for a in song_deets.get('artists', [])]
             album_id = song_deets.get('album', {}).get('id')
-        except Exception:
+        except Exception as e:
+            if handle_spotify_exception(e):
+                return []  # Rate limited - stop immediately
             logger.warning("Error getting track details for seed: %s", seed_song)
             logger.warning(traceback.format_exc())
             return []
@@ -224,7 +236,9 @@ class DB(object):
                         continue
                     out_tracks.append(track_uri)
                 logger.debug("Got %d top tracks from %s", len(top_tracks.get('tracks', [])), artist_name)
-            except Exception:
+            except Exception as e:
+                if handle_spotify_exception(e):
+                    return []  # Rate limited - stop immediately
                 logger.warning("Error getting top tracks for artist: %s", artist_id)
 
         # Strategy 2: Get other tracks from the same album
@@ -240,7 +254,9 @@ class DB(object):
                     if track_uri not in out_tracks:
                         out_tracks.append(track_uri)
                 logger.debug("Got %d album tracks", len(album_tracks.get('items', [])))
-            except Exception:
+            except Exception as e:
+                if handle_spotify_exception(e):
+                    return []  # Rate limited - stop immediately
                 logger.warning("Error getting album tracks for: %s", album_id)
 
         # Strategy 3: Search for artist name to find collaborations and similar
@@ -257,7 +273,9 @@ class DB(object):
                     if track_uri not in out_tracks:
                         out_tracks.append(track_uri)
                 logger.debug("Got %d tracks from search", len(search_results.get('tracks', {}).get('items', [])))
-            except Exception:
+            except Exception as e:
+                if handle_spotify_exception(e):
+                    return []  # Rate limited - stop immediately
                 logger.warning("Error searching for artist: %s", artist_name)
 
         # Strategy 4: Throwback - pull from historical plays on same day of week
