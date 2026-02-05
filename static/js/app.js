@@ -1148,11 +1148,32 @@ function spotify_uri_search(q) {
     }
 }
 
-function youtube_url_search(q) {
-    var id = q.match(/https?:\/\/(www.)?youtube.com\/watch\?v\=(.*)/)[2];
-    return $.ajax({url:'https://www.googleapis.com/youtube/v3/videos',
-        dataType:'json',
-        data:{"part":"snippet,contentDetails", "key": yt_api_key, "id": id}});
+function extract_youtube_id(url) {
+    // Match various YouTube URL formats:
+    // - https://www.youtube.com/watch?v=VIDEO_ID
+    // - https://m.youtube.com/watch?v=VIDEO_ID
+    // - https://youtu.be/VIDEO_ID
+    // - https://youtube.com/watch?v=VIDEO_ID&list=...
+    var match = url.match(/https?:\/\/(?:(?:www\.|m\.)?youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+    if (match && match[1]) {
+        // YouTube IDs are 11 characters, strip any trailing params
+        return match[1].substring(0, 11);
+    }
+    return null;
+}
+
+function youtube_url_search(url) {
+    var id = extract_youtube_id(url);
+    if (!id) {
+        console.error('Could not extract YouTube video ID from:', url);
+        return $.Deferred().reject('Invalid YouTube URL').promise();
+    }
+    // Call backend endpoint instead of YouTube API directly (hides API key)
+    return $.ajax({
+        url: '/youtube/lookup',
+        dataType: 'json',
+        data: { id: id }
+    });
 }
 
 function song_search_submit(ev){
@@ -1181,7 +1202,8 @@ function uri_search_submit(ev){
     var input = $(this).find('input').val();
     $('#search-results > div').empty();
     var sc_url_re = /https?:\/\/(www.)?soundcloud.com\/([^/]+)\/(.*)/;
-    var yt_url_re = /https?:\/\/(www.)?youtube.com\/watch\?v\=(.*)/;
+    // Match youtube.com, m.youtube.com, and youtu.be URLs
+    var yt_url_re = /https?:\/\/(?:(?:www\.|m\.)?youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/;
     var spotify_uri_re = /^spotify:/;
     if (spotify_uri_re.test(input)) {
         spotify_uri_search(input).then(function(data) {
@@ -1191,9 +1213,21 @@ function uri_search_submit(ev){
     } else if (yt_url_re.test(input)) {
         youtube_url_search(input).then(function(data) {
             var target = $('#youtube-results');
-            for(var i=0;i<data.items.length;++i){     
-                target.append(TEMPLATES.search_result_youtube(data.items[i]));        
+            if (data.error) {
+                target.append('<div class="search-item"><div class="text"><h4>Error: ' + data.error + '</h4></div></div>');
+                return;
             }
+            if (!data.items || data.items.length === 0) {
+                target.append('<div class="search-item"><div class="text"><h4>Video not found</h4></div></div>');
+                return;
+            }
+            for(var i=0;i<data.items.length;++i){
+                target.append(TEMPLATES.search_result_youtube(data.items[i]));
+            }
+        }).fail(function(jqXHR, textStatus, errorThrown) {
+            var target = $('#youtube-results');
+            var errorMsg = jqXHR.responseJSON ? jqXHR.responseJSON.error : 'Failed to lookup video';
+            target.append('<div class="search-item"><div class="text"><h4>Error: ' + errorMsg + '</h4></div></div>');
         });
     } else if (sc_url_re.test(input)) {
         soundcloud_url_search(input);

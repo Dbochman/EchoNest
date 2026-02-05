@@ -587,24 +587,46 @@ class DB(object):
         self._add_song(userid, song, False, penalty=penalty)
 
     def add_youtube_song(self, userid, trackid, penalty=0):
-        response = requests.get('https://www.googleapis.com/youtube/v3/videos/',
-                                params=dict(id=trackid, part='snippet,contentDetails', key=CONF.YT_API_KEY)).json()
-        print(json.dumps(response))
-        response = response['items'][0]
-        if 'coldplay' in response['snippet']['title'].lower():
-            logger.info('{0} tried to add "{1}" by Coldplay (YT)'.format(
-                userid,
-                response['snippet']['title']))
+        if not CONF.YT_API_KEY or CONF.YT_API_KEY == 'your-youtube-api-key':
+            logger.error("YouTube API key not configured")
             return
-        #TODO: Artist/Title? Scrobble?
-        song = dict(data=response, src='youtube', trackid=trackid,
-                    title=response['snippet']['title'],
-                    artist=response['snippet']['channelTitle'] + '@youtube',
-                    duration=parse_yt_duration(response['contentDetails']['duration']),
-                    big_img=self._pluck_youtube_img(response, 360),
-                    auto=False,
-                    img=self._pluck_youtube_img(response, 90))
-        self._add_song(userid, song, False, penalty=penalty)
+
+        try:
+            resp = requests.get('https://www.googleapis.com/youtube/v3/videos/',
+                                params=dict(id=trackid, part='snippet,contentDetails', key=CONF.YT_API_KEY),
+                                timeout=10)
+
+            if resp.status_code != 200:
+                logger.error("YouTube API error %d for video %s", resp.status_code, trackid)
+                return
+
+            data = resp.json()
+
+            if not data.get('items'):
+                logger.warning("YouTube video not found: %s", trackid)
+                return
+
+            response = data['items'][0]
+
+            if 'coldplay' in response['snippet']['title'].lower():
+                logger.info('{0} tried to add "{1}" by Coldplay (YT)'.format(
+                    userid,
+                    response['snippet']['title']))
+                return
+
+            song = dict(data=response, src='youtube', trackid=trackid,
+                        title=response['snippet']['title'],
+                        artist=response['snippet']['channelTitle'] + '@youtube',
+                        duration=parse_yt_duration(response['contentDetails']['duration']),
+                        big_img=self._pluck_youtube_img(response, 360),
+                        auto=False,
+                        img=self._pluck_youtube_img(response, 90))
+            self._add_song(userid, song, False, penalty=penalty)
+
+        except requests.exceptions.Timeout:
+            logger.error("YouTube API timeout for video %s", trackid)
+        except Exception as e:
+            logger.error("Error adding YouTube song %s: %s", trackid, str(e))
 
     def get_fill_info(self, trackid):
         key = 'FILL-INFO|{0}'.format(trackid)

@@ -397,7 +397,7 @@ def inject_config():
 SAFE_PATHS = ('/login/', '/logout/', '/playing/', '/queue/', '/volume/',
               '/guest', '/guest/', '/api/jammit/', '/health',
               '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/')
-SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/add_song',
+SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/youtube/lookup', '/add_song',
     '/blast_airhorn', '/airhorn_list', '/queue/', '/jam')
 VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:5001',
                str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
@@ -758,6 +758,47 @@ def search_spotify():
         parsed_result.append(current_track)
 
     return jsonify(parsed_result)
+
+
+@app.route('/youtube/lookup', methods=['GET'])
+def youtube_lookup():
+    """Lookup YouTube video metadata by ID. Proxies request to hide API key."""
+    video_id = request.values.get('id')
+    if not video_id:
+        return jsonify({"error": "Missing video ID"}), 400
+
+    # Validate video ID format (11 alphanumeric chars with - and _)
+    import re
+    if not re.match(r'^[\w-]{11}$', video_id):
+        return jsonify({"error": "Invalid video ID format"}), 400
+
+    if not CONF.YT_API_KEY or CONF.YT_API_KEY == 'your-youtube-api-key':
+        return jsonify({"error": "YouTube API not configured"}), 503
+
+    try:
+        response = requests.get('https://www.googleapis.com/youtube/v3/videos',
+            params={
+                'id': video_id,
+                'part': 'snippet,contentDetails',
+                'key': CONF.YT_API_KEY
+            },
+            timeout=10)
+
+        if response.status_code == 403:
+            logger.warning("YouTube API quota exceeded or key invalid")
+            return jsonify({"error": "YouTube API quota exceeded"}), 429
+
+        if response.status_code != 200:
+            logger.error("YouTube API error: %d %s", response.status_code, response.text)
+            return jsonify({"error": "YouTube API error"}), response.status_code
+
+        return jsonify(response.json())
+
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "YouTube API timeout"}), 504
+    except Exception as e:
+        logger.error("YouTube lookup error: %s", str(e))
+        return jsonify({"error": "Internal error"}), 500
 
 
 @app.route('/add_song', methods=['POST'])
