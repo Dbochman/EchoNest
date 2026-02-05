@@ -15,7 +15,7 @@ When the player is paused, make it visually obvious to users by:
 | **Now-playing text** | Song title + Artist | "Bite my shiny metal pause button!" (Bender quote) |
 | **Album art** | Current song's album | Current song's album with pause icon overlay |
 | **Person image** | User who queued song | `theechonestcom.png` (Bender headshot) |
-| **Airhorn buttons** | Visible | Hidden, replaced with "unpause everything" |
+| **Airhorn buttons** | Visible | Visible, with "unpause everything" button above |
 | **Browser tab** | "Song - Artist \| Andre" | "PAUSED \| Andre" |
 
 ## Implementation

@@ -680,12 +680,10 @@ socket.on('now_playing_update', function(data){
     // Update button states
     if (playerpaused) {
         $('#pause-button').text('unpause everything');
-        $('#do-airhorn, #do-free-airhorn').hide();
         $('#airhorn-unpause-btn').show();
         document.title = "PAUSED | Andre";
     } else {
         $('#pause-button').text('pause everything');
-        $('#do-airhorn, #do-free-airhorn').show();
         $('#airhorn-unpause-btn').hide();
     }
 
