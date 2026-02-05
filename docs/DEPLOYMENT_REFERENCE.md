@@ -116,7 +116,25 @@ rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
 ssh deploy@192.241.153.83 "cd /opt/andre && docker compose up -d --build"
 ```
 
+**One-liner** (sync + rebuild):
+```bash
+rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' --exclude='.env' --exclude='local_config.yaml' --exclude='.cache' /Users/dylanbochman/repos/Andre/ deploy@192.241.153.83:/opt/andre/ && ssh deploy@192.241.153.83 "cd /opt/andre && docker compose up -d --build"
+```
+
 **Important**: `local_config.yaml` is excluded to prevent overwriting the server's production config (which has `HOSTNAME: andre.dylanbochman.com`).
+
+### Verify Deployment
+
+```bash
+# Check containers are healthy
+ssh deploy@192.241.153.83 "cd /opt/andre && docker compose ps"
+
+# Check recent logs for errors
+ssh deploy@192.241.153.83 "cd /opt/andre && docker compose logs --tail=20 andre"
+
+# Test the site
+curl -s -o /dev/null -w "%{http_code}" https://andre.dylanbochman.com/health
+```
 
 ### Check Caddy Status
 
