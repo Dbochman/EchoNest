@@ -415,12 +415,40 @@ var NowPlayingView = Backbone.View.extend({
         window.open(id);
     },
     render: function(){
+        // Handle paused state
+        if (playerpaused) {
+            // Render paused content (intentionally omits #playing-buttons and comment button)
+            this.$el.html(
+                '<div id="now-playing-person" style="background-image:url(/static/theechonestcom.png);"></div>' +
+                '<div id="now-playing-text">' +
+                    '<h1>PAUSED</h1>' +
+                    '<h2>"Bite my shiny metal pause button!"</h2>' +
+                '</div>' +
+                '<div id="now-playing-jammers"></div>'
+            );
+
+            // Show next song's album art with pause overlay
+            var nextSong = playlist.at(0);
+            if (nextSong && nextSong.get('img')) {
+                $('#now-playing-album').css('background-image', 'url(' + nextSong.get('img') + ')');
+            } else {
+                $('#now-playing-album').css('background-image', '');
+            }
+
+            $('#now-playing-album').addClass('paused');
+            this.$el.removeClass("autoplay");
+            _window_resize();
+            return this.$el;
+        }
+
+        // Normal render when not paused
         if(!this.model || !this.model.get("title")){
             return;
         }
         this.$el.html(TEMPLATES.now_playing(this.model.toJSON()));
         $('#now-playing-album').css('background-image',
                                     'url('+this.model.get("big_img")+')')
+        $('#now-playing-album').removeClass('paused');
         this.$el.css({'background-color':
                         '#'+this.model.get("background_color"),
                         'color':'#'+this.model.get('foreground_color')});
@@ -465,6 +493,10 @@ function update_playlist(data) {
 socket.on('playlist_update', function(data){
     console.log("playlist_update", data);
     update_playlist(data);
+    // If paused, update album art when playlist arrives/changes
+    if (playerpaused && data.length > 0 && data[0].img) {
+        $('#now-playing-album').css('background-image', 'url(' + data[0].img + ')');
+    }
 });
 
 function update_comments_for_song (songID, comments) {
@@ -649,26 +681,52 @@ socket.on('auth_token_refresh', function(data){
 
 socket.on('now_playing_update', function(data){
     playerpaused = data.paused;
+
+    // Update button states
     if (playerpaused) {
         $('#pause-button').text('unpause everything');
+        $('#do-airhorn, #do-free-airhorn').hide();
+        $('#airhorn-unpause-btn').show();
+        document.title = "PAUSED | Andre";
     } else {
         $('#pause-button').text('pause everything');
+        $('#do-airhorn, #do-free-airhorn').show();
+        $('#airhorn-unpause-btn').hide();
     }
-    if(!data.title){
-        return;
+
+    // Always keep now_playing model in sync - this triggers view re-render
+    if (data.title) {
+        console.log(data);
+        now_playing.clear({silent:true});
+        now_playing.set(data);
+        if (!playerpaused) {
+            document.title = data.title + " - " + data.artist + " | Andre";
+        }
+    } else if (playerpaused) {
+        // Paused with no title data - trigger render anyway
+        now_playing.trigger('change');
+    } else {
+        // Unpause without title - restore from model if available
+        var title = now_playing.get('title');
+        var artist = now_playing.get('artist');
+        if (title && artist) {
+            document.title = title + " - " + artist + " | Andre";
+        }
     }
-    console.log(data);
-    now_playing.clear({silent:true});
-    now_playing.set(data);
-    document.title = data.title+" - "+data.artist+" | Andre"
-    if(window.webkitNotifications 
-            && window.webkitNotifications.checkPermission() == 0
-            && SHOW_NOTIFICATIONS){
-        var note = window.webkitNotifications.createNotification(data.img,
-                                            data.title, data.artist);
-            note.show();
-            setTimeout(function(){note.close();}, 7000);
+
+    // Notifications (only when playing)
+    if (!playerpaused && data.title) {
+        if(window.webkitNotifications
+                && window.webkitNotifications.checkPermission() == 0
+                && SHOW_NOTIFICATIONS){
+            var note = window.webkitNotifications.createNotification(data.img,
+                                                data.title, data.artist);
+                note.show();
+                setTimeout(function(){note.close();}, 7000);
+        }
     }
+
+    // Player sync logic
     if(is_player){
         fix_player(now_playing.get('src'), now_playing.get('trackid'), data.pos, playerpaused);
     }
@@ -1331,6 +1389,10 @@ window.addEventListener('load', function(){
     $('#pause-button').on('click', pause_button);
     $('#do-airhorn').on('click', do_airhorn);
     $('#do-free-airhorn').on('click', do_free_airhorn);
+    $('#airhorn-unpause-btn').on('click', function(){
+        console.log("unpause button (from airhorn area)");
+        socket.emit("unpause");
+    });
     $('#kill-playing').on('click', kill_playing);
     $('#feel-shame').on('click', feel_shame);
     $('#show-notifications').on('click', show_notifications);
