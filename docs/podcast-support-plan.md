@@ -115,6 +115,29 @@ Passed Codex review after fixes for:
 
 ---
 
+## Post-Merge Bug Fixes
+
+### Visual Duplicate Fix (2026-02-05)
+
+**Issue:** When a track transitioned to now-playing, it would sometimes appear in both the "Now Playing" section AND the queue due to WebSocket timing/race conditions.
+
+**Fix:** Added client-side filtering in `PlaylistView.render()` to exclude the now-playing track from queue display:
+```javascript
+var nowPlayingId = (now_playing && now_playing.get) ? now_playing.get('id') : null;
+this.collection.each(function(obj){
+    if (nowPlayingId && obj.get('id') === nowPlayingId) {
+        return; // Skip now-playing track
+    }
+    // ... render queue item
+});
+```
+
+Also added re-render of playlist on `now_playing_update` to apply filter immediately.
+
+**Commit:** `7f97604`
+
+---
+
 ## Rollback
 
 Changes are additive - if issues arise:
