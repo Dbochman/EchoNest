@@ -1393,6 +1393,15 @@ window.addEventListener('load', function(){
     $('#airhorn-unpause-btn').on('click', function(){
         console.log("unpause button (from airhorn area)");
         socket.emit("unpause");
+        // Also resume Spotify playback if we have a token
+        if (auth_token) {
+            $.ajax('https://api.spotify.com/v1/me/player/play', {
+                method: 'PUT',
+                headers: {
+                    Authorization: "Bearer " + auth_token
+                }
+            });
+        }
     });
     $('#kill-playing').on('click', kill_playing);
     $('#feel-shame').on('click', feel_shame);
