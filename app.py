@@ -154,6 +154,7 @@ class WebSocketManager(object):
                     continue
                 if isinstance(msg, bytes):
                     msg = msg.decode('utf-8', 'ignore')
+                logger.info('WebSocket raw msg received: %r', msg[:100] if msg else msg)
                 T = msg[0]
                 if T == '1':
                     data = json.loads(msg[1:]) if len(msg) > 1 else None
@@ -161,6 +162,7 @@ class WebSocketManager(object):
                         continue
                     event = data[0]
                     args = data[1:]
+                    logger.info('WebSocket event received: %s, args: %s', event, args)
                     try:
                         getattr(self, 'on_' + event.replace('-', '_'))(*args)
                     except Exception:
@@ -242,12 +244,13 @@ class MusicNamespace(WebSocketManager):
         self.emit('volume', str(d.set_volume(vol)))
 
     def on_add_song(self, song_id, src):
+        logger.info('on_add_song called: song_id=%s, src=%s, email=%s', song_id, src, self.email)
         if src == 'spotify':
             self.log(
                 'add_spotify_song "{0}" "{1}"'.format(self.email, song_id))
             d.add_spotify_song(self.email, song_id, penalty=self.penalty)
         elif src == 'youtube':
-            self.log('add_youtube_song "{0}" "{1}"'.format(self.email, song_id))
+            logger.info('Adding YouTube song: %s for user %s', song_id, self.email)
             d.add_youtube_song(self.email, song_id, penalty=self.penalty)
         elif src == 'soundcloud':
             self.log(

@@ -786,22 +786,28 @@ socket.on('now_playing_update', function(data){
 var ALIGNMENT_OFF_COUNT = 0;
 
 function yt_duration_to_time(n){
-    var re = /PT((\d+)M)?((\d+)S)?/;
+    // Parse ISO 8601 duration: PT1H9M9S, PT5M30S, PT45S, etc.
+    var re = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/;
     var m = n.match(re);
     if (m === null) {
-        console.log("something ain't right");
+        console.log("Could not parse YouTube duration:", n);
+        return "0:00";
     }
-    var min = m[2], sec = m[4];
-    if (min === undefined) {
-        min = '0';
-    }
-    if (sec === undefined) {
-        sec = "00";
-    } else if (sec < 10) {
-        sec = "0"+sec;
-    }
+    var hours = parseInt(m[1] || 0, 10);
+    var min = parseInt(m[2] || 0, 10);
+    var sec = parseInt(m[3] || 0, 10);
 
-    return min + ":" + sec;
+    // Format seconds with leading zero
+    var secStr = sec < 10 ? "0" + sec : "" + sec;
+
+    if (hours > 0) {
+        // Format: H:MM:SS
+        var minStr = min < 10 ? "0" + min : "" + min;
+        return hours + ":" + minStr + ":" + secStr;
+    } else {
+        // Format: M:SS
+        return min + ":" + secStr;
+    }
 }
 
 function seconds_to_time(n){
