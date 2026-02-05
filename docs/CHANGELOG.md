@@ -54,6 +54,8 @@ All notable changes to Andre are documented in this file.
   - `handle_spotify_exception()` detects 429 errors and sets the rate limit expiry
   - Bender, search endpoints, and search token all check before making API calls
   - Rate limit automatically clears when the retry-after period expires
+  - Stopped `andre_player` container during active rate limit to prevent spotipy's internal retry logic from making requests
+  - Added cron job to restart player at 1:00 AM UTC daily
   - Commits: `653cd5c`, `29d4a05`
 
 ### Features
