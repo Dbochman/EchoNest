@@ -704,6 +704,7 @@ socket.on('auth_token_refresh', function(data){
 });
 
 socket.on('now_playing_update', function(data){
+    var wasPaused = playerpaused;
     playerpaused = data.paused;
 
     // Update button states
@@ -714,6 +715,10 @@ socket.on('now_playing_update', function(data){
     } else {
         $('#pause-button').text('pause everything');
         $('#airhorn-unpause-btn').hide();
+        // If transitioning from paused to unpaused, resume Spotify
+        if (wasPaused && is_player) {
+            resume_spotify_if_needed();
+        }
     }
 
     // Always keep now_playing model in sync - this triggers view re-render
@@ -1493,7 +1498,6 @@ window.addEventListener('load', function(){
     $('#airhorn-unpause-btn').on('click', function(){
         console.log("unpause button (from airhorn area)");
         socket.emit("unpause");
-        // Spotify playback resumes via fix_player when now_playing_update arrives
     });
     $('#kill-playing').on('click', kill_playing);
     $('#feel-shame').on('click', feel_shame);
