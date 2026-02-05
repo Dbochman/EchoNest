@@ -52,13 +52,61 @@ def _get_authenticated_email():
         return session['email']
     return None
 
+def _parse_session_cookie():
+    """Parse the session cookie manually when Flask's session isn't available."""
+    from itsdangerous import URLSafeTimedSerializer, BadSignature
+    import http.cookies
+    import hashlib
+
+    cookie_header = request.headers.get('Cookie', '')
+    if not cookie_header:
+        return None
+
+    # Parse cookies
+    cookies = http.cookies.SimpleCookie()
+    try:
+        cookies.load(cookie_header)
+    except Exception as e:
+        logger.warning('Failed to parse cookies: %s', e)
+        return None
+
+    if 'session' not in cookies:
+        return None
+
+    session_cookie = cookies['session'].value
+
+    # Flask uses itsdangerous to sign the session
+    try:
+        serializer = URLSafeTimedSerializer(
+            app.secret_key,
+            salt='cookie-session',
+            signer_kwargs={'key_derivation': 'hmac', 'digest_method': hashlib.sha1}
+        )
+        data = serializer.loads(session_cookie)
+        return data
+    except BadSignature as e:
+        logger.warning('Invalid session signature: %s', e)
+        return None
+    except Exception as e:
+        logger.warning('Failed to decode session: %s', e)
+        return None
+
 def _handle_websocket():
     """Handle WebSocket connections in before_request (before Flask route dispatch)."""
-    if request.environ.get('wsgi.websocket') is None:
+    ws = request.environ.get('wsgi.websocket')
+
+    if ws is None:
         return 'WebSocket required', 400
-    email = _get_authenticated_email()
+
+    # Flask's session isn't properly initialized for WebSocket requests
+    # Parse the session cookie manually
+    session_data = _parse_session_cookie()
+    email = session_data.get('email') if session_data else None
+
     if not email:
+        logger.warning('WebSocket unauthorized - no email in session')
         return 'Unauthorized', 401
+
     MusicNamespace(email, 0).serve()
     return ''
 
@@ -132,7 +180,8 @@ class WebSocketManager(object):
         return child
 
     def emit(self, *args):
-        self._ws.send('1' + json.dumps(args))
+        msg = '1' + json.dumps(args)
+        self._ws.send(msg)
 
     def serve(self):
         try:
@@ -143,18 +192,15 @@ class WebSocketManager(object):
                 if msg is None:
                     # Timeout - check if connection is still open
                     if getattr(self._ws, 'closed', False):
-                        logger.info('WebSocket closed by client')
                         break
                     # No message yet (timeout); keep connection open
                     continue
-                if msg == '' and msg != '0':
+                if msg == '':
                     if getattr(self._ws, 'closed', False):
-                        logger.info('WebSocket closed by client')
                         break
                     continue
                 if isinstance(msg, bytes):
                     msg = msg.decode('utf-8', 'ignore')
-                logger.info('WebSocket raw msg received: %r', msg[:100] if msg else msg)
                 T = msg[0]
                 if T == '1':
                     data = json.loads(msg[1:]) if len(msg) > 1 else None
@@ -162,38 +208,33 @@ class WebSocketManager(object):
                         continue
                     event = data[0]
                     args = data[1:]
-                    logger.info('WebSocket event received: %s, args: %s', event, args)
                     try:
                         getattr(self, 'on_' + event.replace('-', '_'))(*args)
                     except Exception:
                         logger.exception('Socket handler error for event: %s', event)
                 elif T == '0':
-                    pass
+                    pass  # Heartbeat
                 else:
-                    print(T, msg)
-                    print('Invalid msg type')
                     return
         except Exception:
-            logger.exception('WebSocket fatal error')
+            logger.exception('WebSocket error')
         finally:
             try:
                 self._ws.close()
             except Exception:
-                logger.exception('WebSocket close failed')
+                pass
             gevent.killall(self._children)
 
 
 class MusicNamespace(WebSocketManager):
     def __init__(self, email, penalty):
         super(MusicNamespace, self).__init__()
-        print("MusicNamespace init")
         try:
             os.makedirs(CONF.OAUTH_CACHE_PATH)
         except Exception:
             pass
         self.logger = app.logger
         self.email = email
-        print(self.email) 
         self.penalty = penalty
         self.auth = spotipy.oauth2.SpotifyOAuth(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
                                                 "prosecco:%s" % email, scope="streaming user-read-currently-playing", cache_path="%s/%s" % (CONF.OAUTH_CACHE_PATH, email))
@@ -450,15 +491,19 @@ def add_cors_header(response):
     response.headers.set('Access-Control-Allow-Origin', '*')
     return response
 
-if CONF.DEBUG:
-    # Use HOSTNAME config even in debug mode
-    host = CONF.HOSTNAME or 'localhost:5000'
-    REDIRECT_URI = "http://{}/authentication/callback".format(host)
-    SPOTIFY_REDIRECT_URI = "http://{}/authentication/spotify_callback".format(host)
+# Determine protocol and host for OAuth redirect URIs
+# In production behind reverse proxy, use HTTPS even if DEBUG is true
+_is_localhost = CONF.HOSTNAME and CONF.HOSTNAME.startswith(('localhost', '127.0.0.1'))
+if _is_localhost:
+    # Local development - use HTTP
+    REDIRECT_URI = "http://{}/authentication/callback".format(CONF.HOSTNAME)
+    SPOTIFY_REDIRECT_URI = "http://{}/authentication/spotify_callback".format(CONF.HOSTNAME)
 else:
-    # Production uses HTTPS behind reverse proxy
-    REDIRECT_URI = "https://%s/authentication/callback" % CONF.HOSTNAME
-    SPOTIFY_REDIRECT_URI = "https://%s/authentication/spotify_callback" % CONF.HOSTNAME
+    # Production - use HTTPS (behind reverse proxy)
+    REDIRECT_URI = "https://{}/authentication/callback".format(CONF.HOSTNAME)
+    SPOTIFY_REDIRECT_URI = "https://{}/authentication/spotify_callback".format(CONF.HOSTNAME)
+
+logger.info('OAuth redirect URIs: %s, %s', REDIRECT_URI, SPOTIFY_REDIRECT_URI)
 
 @app.route('/health')
 def health():
@@ -624,6 +669,7 @@ def jam():
     resp.status_code = 200
 
     return resp
+
 
 @app.route('/guest/', methods=['GET', 'POST'])
 def guest():

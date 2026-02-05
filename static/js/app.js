@@ -91,16 +91,14 @@ _.extend(Socket.prototype, {
         }
     },
     emit: function(){
+        var args = _.toArray(arguments);
         if(!this._s || this._s.readyState != 1){
-            this.msg_queue.push(_.toArray(arguments));
+            this.msg_queue.push(args);
             return;
         }
-        var that = this,
-            msg = '1'+JSON.stringify(_.toArray(arguments));
-        setTimeout(function(){
-            that.schedule_timeout();
-            that._s.send(msg);
-        }, 0);
+        var msg = '1'+JSON.stringify(args);
+        this.schedule_timeout();
+        this._s.send(msg);
     },
     _heartbeat: function(){
         this.schedule_timeout();
@@ -141,7 +139,6 @@ _.extend(Socket.prototype, {
             }
         },
         onerror: function(ev){
-            //console.log('onerror', ev);
         },
         onclose: function(ev){
             this.reconnect();
@@ -149,7 +146,6 @@ _.extend(Socket.prototype, {
     },
 });
 
-console.log(location.hostname);
 let proto = 'wss';
 if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     proto = 'ws';
@@ -1306,8 +1302,10 @@ function song_search_click(ev){
     var $this = $(this),
         key = $this.data('key'),
         src = $this.data('src');
+    console.log('song_search_click called:', {key: key, src: src, readyState: socket._s ? socket._s.readyState : 'no socket'});
     $('#youtube-results, #spotify-results, #soundcloud-results').empty();
     socket.emit('add_song', key, src);
+    console.log('socket.emit add_song sent');
     $(window).scrollTop(0);
 }
 
@@ -1669,7 +1667,7 @@ window.addEventListener('load', function(){
     now_playing_view.render();
 
     // Setup comment handling.
-    addCommentsClickHandlers(); 
+    addCommentsClickHandlers();
     addCommentInputKeyPressHandler();
 
     socket.emit('fetch_playlist');

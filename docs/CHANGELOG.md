@@ -17,6 +17,14 @@ All notable changes to Andre are documented in this file.
 
 ### Bug Fixes
 
+- **WebSocket Message Blocking Fix** - Fixed critical issue where WebSocket messages (airhorn, add_song, vote, etc.) would never reach the server
+  - Root cause: Synchronous Spotify API calls in the `fetch_playlist` handler blocked the entire WebSocket receive loop
+  - When rate limited, spotipy's internal retry logic would block for hours, preventing any messages from being processed
+  - Added rate limit checks before ALL Spotify API calls in the request path (`get_additional_src`, `get_fill_info`)
+  - Changed rate limit state storage from Python global variable to Redis for persistence across container restarts
+  - Added `_parse_session_cookie()` to properly parse Flask session cookies for WebSocket authentication (Flask's session isn't initialized during WebSocket upgrade)
+  - Simplified Socket.emit() in app.js - removed unnecessary setTimeout wrapper
+
 - **Visual Duplicate Fix** - Fixed issue where now-playing track appeared in both Now Playing section and queue due to WebSocket timing
   - Added client-side filtering in `PlaylistView.render()`
   - Commit: `7f97604`

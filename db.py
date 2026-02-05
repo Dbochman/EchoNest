@@ -53,25 +53,42 @@ spotify_client = spotipy.client.Spotify(client_credentials_manager=server_tokens
 auth = spotipy.oauth2.SpotifyClientCredentials(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET)
 auth.get_access_token()
 
-# Global rate limit tracker - stops hammering Spotify when rate limited
-_spotify_rate_limit_until = None
+# Global rate limit tracker - uses Redis for persistence across container restarts
+_rate_limit_redis = None
+
+def _get_rate_limit_redis():
+    """Get a Redis connection for rate limit tracking."""
+    global _rate_limit_redis
+    if _rate_limit_redis is None:
+        _rate_limit_redis = redis.StrictRedis(
+            host=CONF.REDIS_HOST or 'localhost',
+            port=CONF.REDIS_PORT or 6379,
+            password=CONF.REDIS_PASSWORD or None,
+            decode_responses=True
+        )
+    return _rate_limit_redis
 
 def is_spotify_rate_limited():
-    """Check if we're currently rate limited by Spotify."""
-    global _spotify_rate_limit_until
-    if _spotify_rate_limit_until is None:
+    """Check if we're currently rate limited by Spotify (persisted in Redis)."""
+    try:
+        r = _get_rate_limit_redis()
+        ttl = r.ttl('MISC|spotify-rate-limited')
+        if ttl and ttl > 0:
+            logger.debug("Spotify rate limited for %d more seconds", ttl)
+            return True
         return False
-    if datetime.datetime.now() >= _spotify_rate_limit_until:
-        _spotify_rate_limit_until = None
-        logger.info("Spotify rate limit expired, resuming API calls")
+    except Exception as e:
+        logger.warning("Error checking rate limit: %s", e)
         return False
-    return True
 
 def set_spotify_rate_limit(retry_after_seconds):
-    """Set the rate limit expiry time."""
-    global _spotify_rate_limit_until
-    _spotify_rate_limit_until = datetime.datetime.now() + datetime.timedelta(seconds=retry_after_seconds)
-    logger.warning("Spotify rate limited until %s (%d seconds)", _spotify_rate_limit_until, retry_after_seconds)
+    """Set the rate limit expiry time (stored in Redis)."""
+    try:
+        r = _get_rate_limit_redis()
+        r.setex('MISC|spotify-rate-limited', int(retry_after_seconds), '1')
+        logger.warning("Spotify rate limited for %d seconds", retry_after_seconds)
+    except Exception as e:
+        logger.warning("Error setting rate limit: %s", e)
 
 def handle_spotify_exception(e):
     """Check if exception is a rate limit and set tracker. Returns True if rate limited."""
@@ -635,6 +652,11 @@ class DB(object):
         if raw_song:
             return raw_song
 
+        # Don't make Spotify API calls when rate limited
+        if is_spotify_rate_limited():
+            logger.debug("get_fill_info: Spotify rate limited, raising exception")
+            raise Exception("Spotify rate limited")
+
         song = self.get_spotify_song(trackid, scrobble=False)
         # Serialize for Redis storage
         serialized = {}
@@ -932,6 +954,12 @@ class DB(object):
     def get_additional_src(self):
         raw = self._r.hgetall('MISC|backup-queue-data')
         if not raw:
+            # Skip Spotify API calls entirely when rate limited - return placeholder immediately
+            if is_spotify_rate_limited():
+                logger.debug("get_additional_src: Spotify rate limited, returning placeholder")
+                return {'playlist_src': True, 'name': 'Benderbot', 'user': 'the@echonest.com',
+                        'title': 'Rate limited - songs paused', 'img': '', 'jam': [], 'dm_buttons': False}
+
             # Avoid infinite loops if fill songs can't be fetched (e.g., invalid Spotify creds)
             for _ in range(5):
                 try:
