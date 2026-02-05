@@ -132,26 +132,39 @@ class DB(object):
         5. Loops continuously with the last track as new seed
         """
         # Try multiple seed sources for continuity
+        # NOTE: Episodes (podcasts) cannot be used as seeds - Bender only works with tracks
         seed_song = None
 
-        # 1. Last user-queued track
-        seed_song = self._r.get('MISC|last-queued')
+        def is_valid_track_seed(uri):
+            """Check if URI is a valid track (not an episode/podcast)"""
+            if not uri:
+                return False
+            # Episodes have format spotify:episode:xxx, tracks have spotify:track:xxx
+            return ':episode:' not in uri
+
+        # 1. Last user-queued track (skip if it's an episode)
+        candidate = self._r.get('MISC|last-queued')
+        if is_valid_track_seed(candidate):
+            seed_song = candidate
 
         # 2. Last Bender track (for continuous discovery)
         if not seed_song:
-            seed_song = self._r.get('MISC|last-bender-track')
+            candidate = self._r.get('MISC|last-bender-track')
+            if is_valid_track_seed(candidate):
+                seed_song = candidate
 
-        # 3. Currently playing track
+        # 3. Currently playing track (skip if it's an episode)
         if not seed_song:
             now_playing_id = self._r.get('MISC|now-playing')
             if now_playing_id:
-                now_playing_data = self._r.hget('QUEUE|{}'.format(now_playing_id), 'trackid')
-                if now_playing_data:
-                    seed_song = now_playing_data
+                candidate = self._r.hget('QUEUE|{}'.format(now_playing_id), 'trackid')
+                if is_valid_track_seed(candidate):
+                    seed_song = candidate
 
         # 4. Ultimate fallback - Billy Joel (only if nothing else available)
         if not seed_song:
             seed_song = "spotify:track:3utq2FgD1pkmIoaWfjXWAU"
+            logger.debug("Using fallback seed (no valid track seeds found, possibly playing episode)")
 
         # Extract track ID from URI
         seed_song = seed_song.split(":")[-1]
