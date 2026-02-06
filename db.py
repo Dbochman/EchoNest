@@ -617,6 +617,16 @@ class DB(object):
                 return img['url']
         return ""
 
+    # Easter egg overrides for special tracks
+    SOUNDCLOUD_OVERRIDES = {
+        '839681422': {  # CVS Bangers Volume 2
+            'title': 'NSA Bangers',
+            'artist': 'TOLKEINBLACK',
+            'big_img': 'https://thumbnailer.mixcloud.com/unsafe/580x580/extaudio/6/8/c/9/fa7b-eaaf-49e2-baad-1edc21320911.jpg',
+            'img': 'https://thumbnailer.mixcloud.com/unsafe/580x580/extaudio/6/8/c/9/fa7b-eaaf-49e2-baad-1edc21320911.jpg',
+        },
+    }
+
     def add_soundcloud_song(self, userid, trackid, penalty=0):
         token = get_soundcloud_token()
         if not token:
@@ -644,6 +654,7 @@ class DB(object):
             logger.info('{0} tried to add "{1}" by Coldplay'.format(userid,
                             track['title']))
             return
+
         song = dict(data=response, src='soundcloud', trackid=trackid,
                     title=track['title'],
                     artist=artist,
@@ -651,6 +662,11 @@ class DB(object):
                     big_img=track['artwork_url'], auto=False,
                     img=track['artwork_url'],
                     permalink_url=track.get('permalink_url'))
+
+        # Apply easter egg overrides
+        if str(trackid) in self.SOUNDCLOUD_OVERRIDES:
+            song.update(self.SOUNDCLOUD_OVERRIDES[str(trackid)])
+
         self._add_song(userid, song, False, penalty=penalty)
 
     def add_youtube_song(self, userid, trackid, penalty=0):
