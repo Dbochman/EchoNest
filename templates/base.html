@@ -17,6 +17,8 @@
         {%block body%}{%endblock%}
         <script type="text/javascript">
             var user = "{{session.email}}";
+            window.SOUNDCLOUD_CLIENT_ID = "{{ CONF.SOUNDCLOUD_CLIENT_ID or '' }}";
+            window.SOUNDCLOUD_ENABLED = !!window.SOUNDCLOUD_CLIENT_ID;
         </script>
         {%block postjs%}{%endblock%}
         <div id="ytapiplayer"></div>
