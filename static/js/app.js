@@ -1491,7 +1491,9 @@ function pause_button(){
     if (!playerpaused) {
         console.log("pause button");
         socket.emit("pause");
-        spotify_stop();
+        if (now_playing.get('src') === 'spotify') {
+            spotify_stop();
+        }
     } else {
         console.log("unpause button");
         socket.emit("unpause");
