@@ -532,7 +532,7 @@ function onYouTubeIframeAPIReady(){
     ytready = true;
 
     if(!is_player) {
-        $('#make-player').text("sync spotify");
+        $('#make-player').text("sync audio");
     }
 }
 
@@ -1433,10 +1433,10 @@ function make_player(ev){
     is_player = !is_player;
     if(!is_player){
         if (ytready) {
-            $('#make-player').text("sync spotify");
+            $('#make-player').text("sync audio");
             Y.stopVideo();
         } else {
-            $('#make-player').text("sync spotify");
+            $('#make-player').text("sync audio");
         }
         sc_player.stop();
         spotify_stop();
@@ -1463,7 +1463,7 @@ function make_player(ev){
     }
     socket.emit('request_volume');
 
-    $('#make-player').text('disconnect spotify');
+    $('#make-player').text('disconnect audio');
     // Hide sync audio button when connected, show airhorn
     $('#sync-audio-btn').hide();
     $('#do-airhorn').show();
