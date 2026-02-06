@@ -15,6 +15,19 @@ All notable changes to Andre are documented in this file.
   - Removed free airhorn button (UI declutter)
   - Commit: `c6df2a7`
 
+### Bug Fixes
+
+- **YouTube Duration Parsing** - Fixed ISO 8601 duration parsing (PT1H9M9S, PT5M30S, etc.)
+  - Hours now display correctly for long videos
+  - Fixed regex to handle all YouTube duration formats
+
+- **Search Token Refresh Loop** - Fixed infinite loop when Spotify rate limits search token refresh
+  - Only schedule refresh if `time_left > 0`
+
+- **Local Volume Decoupling** - Local playback volume now independent of server volume
+  - Users can mute/adjust their own playback without affecting others
+  - Spotify device volume preserved instead of being overwritten by server
+
 - **SoundCloud OAuth Integration** - Fully reactivated SoundCloud support with server-side OAuth
   - SoundCloud deprecated simple client_id API authentication; now requires OAuth tokens
   - Implemented `client_credentials` OAuth flow (server-side only, no user popup required)
