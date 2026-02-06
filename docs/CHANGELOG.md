@@ -8,6 +8,13 @@ All notable changes to Andre are documented in this file.
 
 ### Features
 
+- **Spotify Playlist & Album URL Support** - Paste open.spotify.com URLs directly into search
+  - Supports playlist, album, and track URLs (e.g. `https://open.spotify.com/playlist/...`)
+  - Shows up to 20 tracks with an "Add All" button to bulk-queue them
+  - Existing `spotify:album:` and `spotify:artist:` URIs now also show track lists with Add All
+  - Private/invalid playlists show a friendly error message
+  - **Files Changed**: `static/js/app.js`, `static/css/app.css`
+
 - **Sync Audio Button** - Improved UX for audio sync
   - Added prominent "sync audio" button at top of Airhorn tab
   - Airhorn button now hidden until user syncs audio (encourages connection)

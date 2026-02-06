@@ -330,6 +330,17 @@ background-position: center center;
     background-repeat: no-repeat;
 }
 
+/* Add All header for album/playlist track lists */
+.add-all-header {
+    background: rgba(var(--accent-color-rgb), 0.15) !important;
+}
+.add-all-header:hover {
+    background: rgba(var(--accent-color-rgb), 0.3) !important;
+}
+.add-all-header .text h4 {
+    font-weight: 700;
+}
+
 /* Podcast badge for episode search results */
 .badge-podcast {
     background: #1DB954;

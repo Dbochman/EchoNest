@@ -1151,6 +1151,39 @@ function spotify_uri_search(q) {
     }
 }
 
+function spotify_playlist_search(playlistId) {
+    return $.ajax({
+        url: 'https://api.spotify.com/v1/playlists/' + playlistId + '/tracks',
+        dataType: 'json',
+        headers: {Authorization: "Bearer " + search_token},
+        data: {limit: 20, fields: 'items(track(uri,name,artists,album,duration_ms))'}
+    }).then(function(data) {
+        var tracks = [];
+        for (var i = 0; i < data.items.length; i++) {
+            if (data.items[i].track) {
+                tracks.push(data.items[i].track);
+            }
+        }
+        return tracks;
+    });
+}
+
+function renderTrackList(tracks, sourceLabel) {
+    var target = $('#spotify-results');
+    if (tracks.length > 1) {
+        var uris = tracks.map(function(t) { return t.uri; });
+        target.append(
+            '<div class="search-item add-all-header" data-uris=\'' + JSON.stringify(uris) + '\'>' +
+            '<div class="icon" style="text-align:center;line-height:60px;font-size:24px;">+</div>' +
+            '<div class="text"><h4>Add ' + (tracks.length >= 20 ? '20' : tracks.length) + ' Tracks to the Queue</h4></div>' +
+            '</div>'
+        );
+    }
+    for (var i = 0; i < tracks.length; i++) {
+        target.append(TEMPLATES.search_result_spotify(tracks[i]));
+    }
+}
+
 function extract_youtube_id(url) {
     // Match various YouTube URL formats:
     // - https://www.youtube.com/watch?v=VIDEO_ID
@@ -1207,11 +1240,43 @@ function uri_search_submit(ev){
     var sc_url_re = /https?:\/\/(www.)?soundcloud.com\/([^/]+)\/(.*)/;
     // Match youtube.com, m.youtube.com, and youtu.be URLs
     var yt_url_re = /https?:\/\/(?:(?:www\.|m\.)?youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/;
+    // Match open.spotify.com URLs: track, album, playlist
+    var spotify_url_re = /https?:\/\/open\.spotify\.com\/(track|album|playlist)\/([\w]+)/;
     var spotify_uri_re = /^spotify:/;
-    if (spotify_uri_re.test(input)) {
+    var spotifyUrlMatch = input.match(spotify_url_re);
+    if (spotifyUrlMatch) {
+        var urlType = spotifyUrlMatch[1];
+        var urlId = spotifyUrlMatch[2];
+        if (urlType === 'track') {
+            spotify_uri_search('spotify:track:' + urlId).then(function(data) {
+                var target = $('#spotify-results');
+                target.append(TEMPLATES.search_result_spotify(data));
+            });
+        } else if (urlType === 'album') {
+            spotify_uri_search('spotify:album:' + urlId).then(function(tracks) {
+                renderTrackList(tracks, 'Album');
+            });
+        } else if (urlType === 'playlist') {
+            spotify_playlist_search(urlId).then(function(tracks) {
+                renderTrackList(tracks, 'Playlist');
+            }).fail(function(jqXHR) {
+                var target = $('#spotify-results');
+                if (jqXHR.status === 404 || jqXHR.status === 403) {
+                    target.append('<div class="search-item"><div class="text"><h4>Playlist not found or is private</h4></div></div>');
+                } else {
+                    target.append('<div class="search-item"><div class="text"><h4>Error loading playlist</h4></div></div>');
+                }
+            });
+        }
+    } else if (spotify_uri_re.test(input)) {
         spotify_uri_search(input).then(function(data) {
             var target = $("#spotify-results");
-            target.append(TEMPLATES.search_result_spotify(data));
+            if (Array.isArray(data)) {
+                var label = input.indexOf(':album:') !== -1 ? 'Album' : 'Artist';
+                renderTrackList(data, label);
+            } else {
+                target.append(TEMPLATES.search_result_spotify(data));
+            }
         });
     } else if (yt_url_re.test(input)) {
         youtube_url_search(input).then(function(data) {
@@ -1642,6 +1707,15 @@ window.addEventListener('load', function(){
                          song_search_click);
     $('#search-results').on('click', '.search-result',
                             song_search_click);
+    $('#search-results').on('click', '.add-all-header', function(ev) {
+        ev.preventDefault();
+        var uris = JSON.parse($(this).attr('data-uris'));
+        for (var i = 0; i < uris.length; i++) {
+            socket.emit('add_song', uris[i], 'spotify');
+        }
+        $('#search-results > div').empty();
+        $(window).scrollTop(0);
+    });
     $('#podcast-search-results').on('click', '.search-result',
                             song_search_click);
     $('#local-mute').on('click', local_mute_toggle);
