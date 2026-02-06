@@ -1212,6 +1212,35 @@ function youtube_url_search(url) {
     });
 }
 
+function extract_youtube_list_id(url) {
+    var match = url.match(/[?&]list=([\w-]+)/);
+    return match ? match[1] : null;
+}
+
+function youtube_playlist_search(listId) {
+    return $.ajax({
+        url: '/youtube/playlist',
+        dataType: 'json',
+        data: { id: listId }
+    });
+}
+
+function renderYouTubeTrackList(items) {
+    var target = $('#youtube-results');
+    if (items.length > 1) {
+        var ids = items.map(function(item) { return item.id; });
+        target.append(
+            '<div class="search-item add-all-header" data-ids=\'' + JSON.stringify(ids) + '\' data-src="youtube">' +
+            '<div class="icon" style="text-align:center;line-height:60px;font-size:24px;">+</div>' +
+            '<div class="text"><h4>Add ' + (items.length >= 20 ? '20' : items.length) + ' Videos to the Queue</h4></div>' +
+            '</div>'
+        );
+    }
+    for (var i = 0; i < items.length; i++) {
+        target.append(TEMPLATES.search_result_youtube(items[i]));
+    }
+}
+
 function song_search_submit(ev){
     ev.preventDefault();
     var input = $(this).find('input').val();
@@ -1239,7 +1268,8 @@ function uri_search_submit(ev){
     $('#search-results > div').empty();
     var sc_url_re = /https?:\/\/(www.)?soundcloud.com\/([^/]+)\/(.*)/;
     // Match youtube.com, m.youtube.com, and youtu.be URLs
-    var yt_url_re = /https?:\/\/(?:(?:www\.|m\.)?youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/;
+    // Match youtube.com watch URLs, youtu.be short URLs, and youtube.com/playlist URLs
+    var yt_url_re = /https?:\/\/(?:(?:www\.|m\.)?youtube\.com\/(?:watch\?|playlist\?)|youtu\.be\/)/;
     // Match open.spotify.com URLs: track, album, playlist
     var spotify_url_re = /https?:\/\/open\.spotify\.com\/(track|album|playlist)\/([\w]+)/;
     var spotify_uri_re = /^spotify:/;
@@ -1279,24 +1309,44 @@ function uri_search_submit(ev){
             }
         });
     } else if (yt_url_re.test(input)) {
-        youtube_url_search(input).then(function(data) {
-            var target = $('#youtube-results');
-            if (data.error) {
-                target.append('<div class="search-item"><div class="text"><h4>Error: ' + data.error + '</h4></div></div>');
-                return;
-            }
-            if (!data.items || data.items.length === 0) {
-                target.append('<div class="search-item"><div class="text"><h4>Video not found</h4></div></div>');
-                return;
-            }
-            for(var i=0;i<data.items.length;++i){
-                target.append(TEMPLATES.search_result_youtube(data.items[i]));
-            }
-        }).fail(function(jqXHR, textStatus, errorThrown) {
-            var target = $('#youtube-results');
-            var errorMsg = jqXHR.responseJSON ? jqXHR.responseJSON.error : 'Failed to lookup video';
-            target.append('<div class="search-item"><div class="text"><h4>Error: ' + errorMsg + '</h4></div></div>');
-        });
+        var ytListId = extract_youtube_list_id(input);
+        if (ytListId) {
+            youtube_playlist_search(ytListId).then(function(data) {
+                var target = $('#youtube-results');
+                if (data.error) {
+                    target.append('<div class="search-item"><div class="text"><h4>Error: ' + data.error + '</h4></div></div>');
+                    return;
+                }
+                if (!data.items || data.items.length === 0) {
+                    target.append('<div class="search-item"><div class="text"><h4>Playlist not found or empty</h4></div></div>');
+                    return;
+                }
+                renderYouTubeTrackList(data.items);
+            }).fail(function(jqXHR) {
+                var target = $('#youtube-results');
+                var errorMsg = jqXHR.responseJSON ? jqXHR.responseJSON.error : 'Failed to load playlist';
+                target.append('<div class="search-item"><div class="text"><h4>Error: ' + errorMsg + '</h4></div></div>');
+            });
+        } else {
+            youtube_url_search(input).then(function(data) {
+                var target = $('#youtube-results');
+                if (data.error) {
+                    target.append('<div class="search-item"><div class="text"><h4>Error: ' + data.error + '</h4></div></div>');
+                    return;
+                }
+                if (!data.items || data.items.length === 0) {
+                    target.append('<div class="search-item"><div class="text"><h4>Video not found</h4></div></div>');
+                    return;
+                }
+                for(var i=0;i<data.items.length;++i){
+                    target.append(TEMPLATES.search_result_youtube(data.items[i]));
+                }
+            }).fail(function(jqXHR, textStatus, errorThrown) {
+                var target = $('#youtube-results');
+                var errorMsg = jqXHR.responseJSON ? jqXHR.responseJSON.error : 'Failed to lookup video';
+                target.append('<div class="search-item"><div class="text"><h4>Error: ' + errorMsg + '</h4></div></div>');
+            });
+        }
     } else if (sc_url_re.test(input)) {
         soundcloud_url_search(input);
     } else {
@@ -1709,9 +1759,17 @@ window.addEventListener('load', function(){
                             song_search_click);
     $('#search-results').on('click', '.add-all-header', function(ev) {
         ev.preventDefault();
-        var uris = JSON.parse($(this).attr('data-uris'));
-        for (var i = 0; i < uris.length; i++) {
-            socket.emit('add_song', uris[i], 'spotify');
+        var src = $(this).attr('data-src');
+        if (src === 'youtube') {
+            var ids = JSON.parse($(this).attr('data-ids'));
+            for (var i = 0; i < ids.length; i++) {
+                socket.emit('add_song', ids[i], 'youtube');
+            }
+        } else {
+            var uris = JSON.parse($(this).attr('data-uris'));
+            for (var i = 0; i < uris.length; i++) {
+                socket.emit('add_song', uris[i], 'spotify');
+            }
         }
         $('#search-results > div').empty();
         $(window).scrollTop(0);

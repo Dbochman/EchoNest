@@ -571,7 +571,7 @@ def inject_config():
 SAFE_PATHS = ('/login/', '/logout/', '/playing/', '/queue/', '/volume/',
               '/guest', '/guest/', '/api/jammit/', '/health',
               '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/')
-SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/youtube/lookup', '/add_song',
+SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/youtube/lookup', '/youtube/playlist', '/add_song',
     '/blast_airhorn', '/airhorn_list', '/queue/', '/jam')
 VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:5001',
                str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
@@ -977,6 +977,65 @@ def youtube_lookup():
         return jsonify({"error": "YouTube API timeout"}), 504
     except Exception as e:
         logger.error("YouTube lookup error: %s", str(e))
+        return jsonify({"error": "Internal error"}), 500
+
+
+@app.route('/youtube/playlist', methods=['GET'])
+def youtube_playlist():
+    """Lookup YouTube playlist items. Returns video metadata for up to 20 items."""
+    import re
+    playlist_id = request.values.get('id')
+    if not playlist_id:
+        return jsonify({"error": "Missing playlist ID"}), 400
+
+    if not re.match(r'^[\w-]+$', playlist_id):
+        return jsonify({"error": "Invalid playlist ID format"}), 400
+
+    if not CONF.YT_API_KEY or CONF.YT_API_KEY == 'your-youtube-api-key':
+        return jsonify({"error": "YouTube API not configured"}), 503
+
+    try:
+        # Step 1: Get playlist items (video IDs)
+        pl_response = requests.get('https://www.googleapis.com/youtube/v3/playlistItems',
+            params={
+                'playlistId': playlist_id,
+                'part': 'contentDetails',
+                'maxResults': 20,
+                'key': CONF.YT_API_KEY
+            },
+            timeout=10)
+
+        if pl_response.status_code == 404:
+            return jsonify({"error": "Playlist not found"}), 404
+        if pl_response.status_code == 403:
+            return jsonify({"error": "YouTube API quota exceeded"}), 429
+        if pl_response.status_code != 200:
+            return jsonify({"error": "YouTube API error"}), pl_response.status_code
+
+        pl_data = pl_response.json()
+        video_ids = [item['contentDetails']['videoId'] for item in pl_data.get('items', [])]
+
+        if not video_ids:
+            return jsonify({"items": []})
+
+        # Step 2: Get full video metadata (snippet + contentDetails)
+        vid_response = requests.get('https://www.googleapis.com/youtube/v3/videos',
+            params={
+                'id': ','.join(video_ids),
+                'part': 'snippet,contentDetails',
+                'key': CONF.YT_API_KEY
+            },
+            timeout=10)
+
+        if vid_response.status_code != 200:
+            return jsonify({"error": "YouTube API error"}), vid_response.status_code
+
+        return jsonify(vid_response.json())
+
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "YouTube API timeout"}), 504
+    except Exception as e:
+        logger.error("YouTube playlist lookup error: %s", str(e))
         return jsonify({"error": "Internal error"}), 500
 
 

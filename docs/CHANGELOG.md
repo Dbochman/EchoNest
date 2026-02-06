@@ -15,6 +15,12 @@ All notable changes to Andre are documented in this file.
   - Private/invalid playlists show a friendly error message
   - **Files Changed**: `static/js/app.js`, `static/css/app.css`
 
+- **YouTube Playlist URL Support** - Paste YouTube playlist URLs to see all videos
+  - Supports `youtube.com/watch?v=...&list=...` and `youtube.com/playlist?list=...` formats
+  - Shows up to 20 videos with an "Add All" button to bulk-queue them
+  - Single video URLs (without `list=`) still work as before
+  - **Files Changed**: `app.py`, `static/js/app.js`
+
 - **Sync Audio Button** - Improved UX for audio sync
   - Added prominent "sync audio" button at top of Airhorn tab
   - Airhorn button now hidden until user syncs audio (encourages connection)
