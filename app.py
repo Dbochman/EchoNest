@@ -680,22 +680,18 @@ def auth_callback():
     user = requests.get('https://www.googleapis.com/oauth2/v1/userinfo',
                         params=dict(access_token=token)).json()
 
-    # Check email domain against allowed list
+    # Check email domain against allowed list (empty list = allow all)
     email = user.get('email', '')
     allowed_domains = CONF.ALLOWED_EMAIL_DOMAINS or []
     # Ensure it's a list (handle case where config has a single string)
     if isinstance(allowed_domains, str):
         allowed_domains = [allowed_domains]
 
-    email_allowed = False
-    for domain in allowed_domains:
-        if email.endswith('@' + domain):
-            email_allowed = True
-            break
-
-    if not email_allowed:
-        logger.warning('Login rejected for email: %s (allowed domains: %s)', email, allowed_domains)
-        return redirect('/login/')
+    if allowed_domains:
+        email_allowed = any(email.endswith('@' + domain) for domain in allowed_domains)
+        if not email_allowed:
+            logger.warning('Login rejected for email: %s (allowed domains: %s)', email, allowed_domains)
+            return redirect('/login/')
 
     for k1, k2 in (('email', 'email',), ('fullname', 'name'),):
         session[k1] = user[k2]
