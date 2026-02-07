@@ -101,6 +101,60 @@ class TestSpotifyAPI:
         assert 'ANDRE_SPOTIFY_EMAIL' in data.get('error', '')
 
 
+class TestReadEndpoints:
+    """Test /api/queue, /api/playing, and /api/events auth."""
+
+    @pytest.fixture
+    def client(self):
+        if os.environ.get('SKIP_SPOTIFY_PREFETCH'):
+            pytest.skip('Skipping due to SKIP_SPOTIFY_PREFETCH')
+
+        os.environ['ANDRE_API_TOKEN'] = 'test-secret-token-12345'
+        from app import app, CONF
+        app.config['TESTING'] = True
+        self._host = str(CONF.HOSTNAME) if CONF.HOSTNAME else 'localhost:5000'
+        with app.test_client() as client:
+            yield client
+
+    def _get(self, client, path, **kwargs):
+        headers = kwargs.pop('headers', {})
+        headers['Host'] = self._host
+        return client.get(path, headers=headers, **kwargs)
+
+    # --- /api/queue ---
+
+    def test_api_queue_401(self, client):
+        rv = self._get(client, '/api/queue')
+        assert rv.status_code == 401
+
+    def test_api_queue_403(self, client):
+        rv = self._get(client, '/api/queue',
+                       headers={'Authorization': 'Bearer wrong'})
+        assert rv.status_code == 403
+
+    # --- /api/playing ---
+
+    def test_api_playing_401(self, client):
+        rv = self._get(client, '/api/playing')
+        assert rv.status_code == 401
+
+    def test_api_playing_403(self, client):
+        rv = self._get(client, '/api/playing',
+                       headers={'Authorization': 'Bearer wrong'})
+        assert rv.status_code == 403
+
+    # --- /api/events ---
+
+    def test_api_events_401(self, client):
+        rv = self._get(client, '/api/events')
+        assert rv.status_code == 401
+
+    def test_api_events_403(self, client):
+        rv = self._get(client, '/api/events',
+                       headers={'Authorization': 'Bearer wrong'})
+        assert rv.status_code == 403
+
+
 class TestAPIWithoutSpotify:
     """Tests that don't require Spotify connection."""
 

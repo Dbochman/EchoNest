@@ -66,6 +66,8 @@ andre (Flask app) → Redis ← player (master_player.py)
 
 WebSocket via gevent-websocket. The `before_request` hook intercepts WebSocket upgrades before Flask routing. Redis pub/sub coordinates between containers.
 
+**SSE event stream** (`GET /api/events`): Token-authenticated Server-Sent Events endpoint for API clients. Subscribes to the same Redis pubsub channel as the WebSocket and emits `queue_update`, `now_playing`, `player_position`, and `volume` events. Keepalive comments sent every 15 seconds.
+
 ### Bender (Auto-fill) Engine
 
 Spotify deprecated `/recommendations` and `/artists/{id}/related-artists` APIs (Nov 2024). The current approach uses:
@@ -89,6 +91,7 @@ Backbone.js + jQuery served as static files. Main logic in `static/js/app.js`. N
 - `/api/` is in `SAFE_PARAM_PATHS` (bypasses session auth); token auth handled by decorator
 - Config: set `ANDRE_API_TOKEN` via environment variable or yaml config
 - Spotify Connect endpoints (`/api/spotify/*`) use the same Bearer token auth; require `ANDRE_SPOTIFY_EMAIL` to be set and the corresponding user to have completed Spotify OAuth via the browser
+- Read endpoints: `GET /api/queue` (full metadata including vote, jam, comments, duration, score), `GET /api/playing` (now-playing with server timestamp), `GET /api/events` (SSE stream)
 
 ### Redis Data
 - Strings decoded automatically (`decode_responses=True`)

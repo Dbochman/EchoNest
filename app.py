@@ -20,7 +20,7 @@ import psycopg2
 import spotipy.oauth2
 import spotipy
 
-from flask import Flask, request, render_template, session, redirect, jsonify, make_response
+from flask import Flask, request, render_template, session, redirect, jsonify, make_response, Response, stream_with_context
 from flask_assets import Environment, Bundle
 
 from config import CONF
@@ -1235,3 +1235,97 @@ def api_spotify_status():
     except spotipy.exceptions.SpotifyException as e:
         logger.error("Spotify status error: %s", e)
         return jsonify(error=str(e)), 502
+
+
+# ---------------------------------------------------------------------------
+# Rich read endpoints + SSE event stream
+# ---------------------------------------------------------------------------
+
+API_QUEUE_PROPS = ('id', 'title', 'artist', 'trackid', 'src', 'user', 'img', 'big_img',
+                   'duration', 'vote', 'jam', 'comments', 'score', 'auto')
+
+API_PLAYING_PROPS = ('id', 'title', 'artist', 'trackid', 'src', 'user', 'img', 'big_img',
+                     'duration', 'vote', 'jam', 'comments', 'starttime', 'endtime',
+                     'paused', 'pos', 'type')
+
+
+def _pick(obj, keys):
+    """Extract *keys* from dict *obj*, defaulting missing values to ''."""
+    return {k: obj.get(k, '') for k in keys}
+
+
+def _serialize_queue():
+    queue = d.get_queued()
+    return [_pick(x, API_QUEUE_PROPS) for x in queue]
+
+
+def _serialize_playing():
+    playing = d.get_now_playing()
+    rv = _pick(playing, API_PLAYING_PROPS)
+    rv['now'] = datetime.datetime.now().isoformat()
+    return rv
+
+
+@app.route('/api/queue', methods=['GET'])
+@require_api_token
+def api_queue():
+    return jsonify(queue=_serialize_queue(), now=datetime.datetime.now().isoformat())
+
+
+@app.route('/api/playing', methods=['GET'])
+@require_api_token
+def api_playing():
+    return jsonify(**_serialize_playing())
+
+
+@app.route('/api/events', methods=['GET'])
+@require_api_token
+def api_events():
+    def generate():
+        r = redis.StrictRedis(
+            host=CONF.REDIS_HOST or 'localhost',
+            port=CONF.REDIS_PORT or 6379,
+            password=CONF.REDIS_PASSWORD or None,
+            decode_responses=True,
+        ).pubsub()
+        r.subscribe('MISC|update-pubsub')
+        try:
+            while True:
+                msg = None
+                with gevent.Timeout(15, False):
+                    msg = r.get_message(ignore_subscribe_messages=True, timeout=15)
+                if msg is None:
+                    # keepalive
+                    yield ': keepalive\n\n'
+                    continue
+                data = msg.get('data')
+                if not isinstance(data, str):
+                    continue
+
+                if data == 'playlist_update':
+                    payload = json.dumps(_serialize_queue())
+                    yield 'event: queue_update\ndata: %s\n\n' % payload
+                elif data == 'now_playing_update':
+                    payload = json.dumps(_serialize_playing())
+                    yield 'event: now_playing\ndata: %s\n\n' % payload
+                    # Also send queue update like the WebSocket does
+                    q_payload = json.dumps(_serialize_queue())
+                    yield 'event: queue_update\ndata: %s\n\n' % q_payload
+                elif data.startswith('pp|'):
+                    _, src, track, pos = data.split('|', 3)
+                    payload = json.dumps({'src': src, 'trackid': track, 'pos': int(pos)})
+                    yield 'event: player_position\ndata: %s\n\n' % payload
+                elif data.startswith('v|'):
+                    _, vol = data.split('|', 1)
+                    payload = json.dumps({'volume': int(vol)})
+                    yield 'event: volume\ndata: %s\n\n' % payload
+        except GeneratorExit:
+            pass
+        finally:
+            r.unsubscribe()
+            r.close()
+
+    resp = Response(stream_with_context(generate()), mimetype='text/event-stream')
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['X-Accel-Buffering'] = 'no'
+    return resp

@@ -206,6 +206,9 @@ Token-authenticated endpoints for programmatic queue management. All require `Au
 | `/api/queue/pause` | POST | — | Pause playback |
 | `/api/queue/resume` | POST | — | Resume playback |
 | `/api/queue/clear` | POST | — | Clear entire queue |
+| `/api/queue` | GET | — | Full queue with vote, jam, comments, duration, score |
+| `/api/playing` | GET | — | Now-playing with full metadata + server timestamp |
+| `/api/events` | GET | — | SSE event stream (real-time updates) |
 | `/api/spotify/devices` | GET | — | List Spotify Connect devices |
 | `/api/spotify/transfer` | POST | `{"device_id": "<id>", "play": true}` | Transfer playback to a device |
 | `/api/spotify/status` | GET | — | Current Spotify playback status |
@@ -227,6 +230,21 @@ curl -s -X POST https://andre.dylanbochman.com/api/spotify/transfer \
 ```
 
 Returns `{"ok": true}` on success or `{"error": "message"}` on failure.
+
+**Read endpoints:**
+```bash
+# Rich queue data (includes vote, jam, comments, duration, score, auto)
+curl -s https://andre.dylanbochman.com/api/queue \
+  -H "Authorization: Bearer $ANDRE_API_TOKEN"
+
+# Now-playing with full metadata
+curl -s https://andre.dylanbochman.com/api/playing \
+  -H "Authorization: Bearer $ANDRE_API_TOKEN"
+
+# SSE event stream (Ctrl+C to stop)
+curl -N https://andre.dylanbochman.com/api/events \
+  -H "Authorization: Bearer $ANDRE_API_TOKEN"
+```
 
 **Note**: Spotify Connect endpoints require `ANDRE_SPOTIFY_EMAIL` to be set in `.env` and the corresponding user to have completed Spotify OAuth via the browser UI ("sync audio" button).
 
