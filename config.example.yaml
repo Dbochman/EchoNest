@@ -77,3 +77,7 @@ BUNDLES:
 
 # Cache buster for static assets
 CACHE_BUSTER: "2024-01-01"
+
+# API token for programmatic access (e.g., OpenClaw bot)
+# Generate: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+ANDRE_API_TOKEN: ""

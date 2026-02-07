@@ -85,6 +85,9 @@ Backbone.js + jQuery served as static files. Main logic in `static/js/app.js`. N
 - Google OAuth for login, Spotify OAuth per-user for playback
 - `DEV_AUTH_EMAIL` bypasses OAuth when `DEBUG=true` on localhost
 - Public endpoints defined in `SAFE_PATHS` and `SAFE_PARAM_PATHS` lists in `app.py`
+- REST API endpoints under `/api/` use `@require_api_token` decorator with `secrets.compare_digest` for constant-time token comparison
+- `/api/` is in `SAFE_PARAM_PATHS` (bypasses session auth); token auth handled by decorator
+- Config: set `ANDRE_API_TOKEN` via environment variable or yaml config
 
 ### Redis Data
 - Strings decoded automatically (`decode_responses=True`)

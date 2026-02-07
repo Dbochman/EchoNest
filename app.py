@@ -6,6 +6,8 @@ import logging
 import json
 import datetime
 import hashlib
+import functools
+import secrets
 import urllib.parse
 import urllib.request
 import socket as psocket
@@ -572,7 +574,7 @@ SAFE_PATHS = ('/login/', '/logout/', '/playing/', '/queue/', '/volume/',
               '/guest', '/guest/', '/api/jammit/', '/health',
               '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/')
 SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/youtube/lookup', '/youtube/playlist', '/add_song',
-    '/blast_airhorn', '/airhorn_list', '/queue/', '/jam')
+    '/blast_airhorn', '/airhorn_list', '/queue/', '/jam', '/api/')
 VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:5001',
                str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
 
@@ -1067,3 +1069,88 @@ def airhorn_list():
     resp = jsonify(airhorns_list)
 
     return resp
+
+
+# ---------------------------------------------------------------------------
+# REST API (token-authenticated, for programmatic access e.g. OpenClaw)
+# ---------------------------------------------------------------------------
+
+API_EMAIL = 'openclaw@api'
+
+
+def require_api_token(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        configured_token = CONF.ANDRE_API_TOKEN
+        if not configured_token:
+            return jsonify(error='API token not configured on server'), 503
+
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            resp = jsonify(error='Missing or malformed Authorization header')
+            resp.status_code = 401
+            resp.headers['WWW-Authenticate'] = 'Bearer'
+            return resp
+
+        provided_token = auth_header[7:]  # strip "Bearer "
+        if not secrets.compare_digest(provided_token, configured_token):
+            return jsonify(error='Invalid API token'), 403
+
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route('/api/queue/remove', methods=['POST'])
+@require_api_token
+def api_queue_remove():
+    body = request.get_json(silent=True) or {}
+    song_id = body.get('id')
+    if not song_id:
+        return jsonify(error='Missing required field: id'), 400
+    d.kill_song(song_id, API_EMAIL)
+    return jsonify(ok=True)
+
+
+@app.route('/api/queue/skip', methods=['POST'])
+@require_api_token
+def api_queue_skip():
+    d.kill_playing(API_EMAIL)
+    return jsonify(ok=True)
+
+
+@app.route('/api/queue/vote', methods=['POST'])
+@require_api_token
+def api_queue_vote():
+    body = request.get_json(silent=True) or {}
+    song_id = body.get('id')
+    if not song_id:
+        return jsonify(error='Missing required field: id'), 400
+    up = body.get('up', True)
+    # Normalize: accept bool, string, or int
+    if isinstance(up, str):
+        up = up.lower() in ('true', '1', 'yes')
+    else:
+        up = bool(up)
+    d.vote(API_EMAIL, song_id, up)
+    return jsonify(ok=True)
+
+
+@app.route('/api/queue/pause', methods=['POST'])
+@require_api_token
+def api_queue_pause():
+    d.pause(API_EMAIL)
+    return jsonify(ok=True)
+
+
+@app.route('/api/queue/resume', methods=['POST'])
+@require_api_token
+def api_queue_resume():
+    d.unpause(API_EMAIL)
+    return jsonify(ok=True)
+
+
+@app.route('/api/queue/clear', methods=['POST'])
+@require_api_token
+def api_queue_clear():
+    d.nuke_queue(API_EMAIL)
+    return jsonify(ok=True)
