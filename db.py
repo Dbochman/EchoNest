@@ -1387,9 +1387,6 @@ class DB(object):
             self._r.zrem('MISC|priority-queue', song)
             data = self.get_song_from_queue(song)
 
-            # Always clear the preview so the UI shows a fresh next track
-            self._r.delete('BENDER|next-preview')
-
             if (data and data['src'] == 'spotify'
                     and data['user'] != 'the@echonest.com'):
                 #got something from a human, set last-queued and clear bender caches
