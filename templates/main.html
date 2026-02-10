@@ -175,9 +175,9 @@
 
             <div class="jammers">
                 <%_.each(jam, function(j){ %>
-                     <div title="<%-j.user%>"
+                     <div title="<%-j.user==='the@echonest.com'?'Bender':j.user%>"
                      class="jammer"
-                     style="background-image:url(/userimg/<%-j.user%>/img.png)" >
+                     style="background-image:url(<%-FEEL_SHAME?shame_image(j.user,43):"/userimg/"+j.user+"/img.png"%>)" >
                      </div>
                  <% }) %>
              </div>
@@ -202,8 +202,8 @@
                 </tr></tbody></table>
              </div>
 
-             <div class="person-image" title="<%-user%>"
-             style="background-image:url(<%-FEEL_SHAME?shame_image(43,65):"/userimg/"+user+"/img.png"%>);"></div>
+             <div class="person-image<% if(user==='the@echonest.com'){ %> bender-img<% } %>" title="<%-user==='the@echonest.com'?'Bender':user%>"
+             style="background-image:url(<%-FEEL_SHAME?shame_image(user,65):"/userimg/"+user+"/img.png"%>);"></div>
         </div>
     </div>
 </script>
@@ -246,13 +246,13 @@
 	</div>
         <div class="jammers">
           <%_.each(jam, function(j){ %>
-          <div title="<%-j.user%>"
+          <div title="<%-j.user==='the@echonest.com'?'Bender':j.user%>"
                class="jammer"
-               style="background-image:url(/userimg/<%-j.user%>/img.png)" >
+               style="background-image:url(<%-FEEL_SHAME?shame_image(j.user,43):"/userimg/"+j.user+"/img.png"%>)" >
           </div>
           <% }) %>
         </div>
-	<div class="person-image" style="background-image:url(<%-FEEL_SHAME?shame_image(43,65):"/userimg/"+user+"/img.png"%>);"></div>
+	<div class="person-image<% if(user==='the@echonest.com'){ %> bender-img<% } %>" title="<%-user==='the@echonest.com'?'Bender':user%>" style="background-image:url(<%-FEEL_SHAME?shame_image(user,65):"/userimg/"+user+"/img.png"%>);"></div>
         </div>
     </div>
 </script>
@@ -260,7 +260,7 @@
 
 <script type="underscore/template" id="now_playing">
     <div id="now-playing-person"
-        style="background-image:url(<%-FEEL_SHAME?shame_image(180,270):"/userimg/"+user+"/img.png"%>);"
+        style="background-image:url(<%-FEEL_SHAME?shame_image(user,270):"/userimg/"+user+"/img.png"%>);"
         title="<%-user%>"></div>
     <div id="now-playing-text">
         <h1><%=title%></h1>
@@ -297,8 +297,8 @@
     <div id="now-playing-jammers">
         <% _.each(jam, function(j){ %>
             <div class="bigjammer"
-                style="background-image:url(/userimg/<%-j.user%>/img.png)"
-                title="<%-j.user%>"></div>
+                style="background-image:url(<%-FEEL_SHAME?shame_image(j.user,65):"/userimg/"+j.user+"/img.png"%>)"
+                title="<%-j.user==='the@echonest.com'?'Bender':j.user%>"></div>
         <% }) %>
     </div>
 </script>
@@ -317,7 +317,7 @@
             <div class="airhorn-icon"
                 style="background-image:url(<%=horn.img%>);"></div>
             <div class="airhorn-person" <%-FEEL_SHAME?"":"title="+horn.user%>
-                style="background-image:url(<%-FEEL_SHAME?shame_image(43,65):"/userimg/"+horn.user+"/img.png"%>);"
+                style="background-image:url(<%-FEEL_SHAME?shame_image(horn.user,65):"/userimg/"+horn.user+"/img.png"%>);"
             ></div>
             <h3><%=horn.title%></h3>
             <h4><%=horn.artist%></h4>

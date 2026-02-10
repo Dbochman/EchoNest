@@ -1578,10 +1578,15 @@ function feel_shame(ev){
     $('#feel-shame').text(FEEL_SHAME?'show shame':'hide shame');
 }
 
-var shame_colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
-function shame_image(width,height){
-    var color = shame_colors[Math.floor(Math.random()*shame_colors.length)].replace('#','');
-    return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='"+width+"' height='"+height+"'%3E%3Crect width='100%25' height='100%25' fill='%23"+color+"'/%3E%3C/svg%3E";
+function shame_image(email, size){
+    // Simple hash to anonymize - just needs to be consistent per email
+    var h = 0;
+    for (var i = 0; i < email.length; i++) {
+        h = ((h << 5) - h) + email.charCodeAt(i);
+        h = h & h; // Convert to 32bit int
+    }
+    var hex = Math.abs(h).toString(16).padStart(32, 'a');
+    return "https://www.gravatar.com/avatar/"+hex+"?d=monsterid&f=y&s="+size;
 }
 
 function show_notifications(){

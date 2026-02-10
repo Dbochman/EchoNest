@@ -161,7 +161,8 @@ float:left; width:30px; height:30px;
 }
 .queue-item-text {padding-left:10px;display:inline-block;height:65px;text-overflow:hidden;overflow:hidden;float:left;}
 .queue-item .album-image {height:61px;width:61px;margin:2px;background:url(http://placekitten.com/65/65);background-size:cover;display:inline-block;float:left;}
-.queue-item .person-image {height:65px;width:65px;background:url(http://placekitten.com/65/65);position:absolute;right:0;background-size:cover;display:inline-block;}
+.queue-item .person-image {height:65px;width:65px;background:url(http://placekitten.com/65/65);position:absolute;right:0;background-size:cover;background-position:center;display:inline-block;}
+.queue-item .person-image.bender-img {background-size:contain;background-repeat:no-repeat;background-position:left center;}
 .playlist-src-item {color: #F0F0F0;}
 .playlist-src-item .album-image {background-size: contain;background-position:center;background-repeat:no-repeat;}
 .controls {height:65px; display:inline-block; width:88px;position:absolute;right:65px;
