@@ -59,3 +59,10 @@ LOG_DIR: './play_logs'
 OAUTH_CACHE_PATH: './oauth_creds'
 HOSTNAME: localhost:5000
 BENDER_FILTER_TIME: 604800
+MIN_QUEUE_DEPTH: 3
+BENDER_STRATEGY_WEIGHTS:
+    genre: 35
+    throwback: 30
+    artist_search: 25
+    top_tracks: 5
+    album: 5

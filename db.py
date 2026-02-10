@@ -178,6 +178,19 @@ def parse_yt_duration(d):
 
 
 class DB(object):
+    STRATEGY_WEIGHTS_DEFAULT = {
+        'genre': 35, 'throwback': 30, 'artist_search': 25, 'top_tracks': 5, 'album': 5,
+    }
+
+    # Maps strategy name to its Redis cache key suffix
+    _STRATEGY_CACHE_KEYS = {
+        'genre': 'BENDER|cache:genre',
+        'throwback': 'BENDER|cache:throwback',
+        'artist_search': 'BENDER|cache:artist-search',
+        'top_tracks': 'BENDER|cache:top-tracks',
+        'album': 'BENDER|cache:album',
+    }
+
     def __init__(self, init_history_to_redis=True):
         logger.info('Creating DB object')
         redis_host = CONF.REDIS_HOST or 'localhost'
@@ -202,226 +215,490 @@ class DB(object):
         #add played song to FILTER "set"
         self._r.setex("FILTER|%s"% tid, CONF.BENDER_FILTER_TIME, 1)
 
-    def _grab_fill_in_songs(self, depth=0):
+    # ── Bender: Per-Song Strategy Rotation ──────────────────────────
+
+    def _resolve_seed_uri(self):
+        """Resolve the best seed track URI for Bender recommendations.
+
+        Checks last-queued → last-bender-track → now-playing → Billy Joel fallback.
+        Returns a full spotify:track:xxx URI string.
         """
-        Bender's recommendation engine using Artist Top Tracks + Album Tracks.
-
-        Spotify deprecated recommendations (Nov 2024) and related-artists APIs.
-        This approach uses still-working endpoints:
-        1. Gets the seed from last-queued, last Bender track, or now-playing
-        2. Fetches top tracks from the seed artist(s)
-
-        Returns empty list if Spotify is rate limited to avoid hammering the API.
-        3. Gets other tracks from the same album
-        4. Searches for artist name to find more variety
-        5. Loops continuously with the last track as new seed
-        """
-        # Check rate limit before making any API calls
-        if is_spotify_rate_limited():
-            logger.debug("Bender skipping - Spotify rate limited")
-            return []
-
-        # Try multiple seed sources for continuity
-        # NOTE: Episodes (podcasts) cannot be used as seeds - Bender only works with tracks
-        seed_song = None
-
         def is_valid_track_seed(uri):
-            """Check if URI is a valid track (not an episode/podcast)"""
             if not uri:
                 return False
-            # Episodes have format spotify:episode:xxx, tracks have spotify:track:xxx
             return ':episode:' not in uri
 
-        # 1. Last user-queued track (skip if it's an episode)
         candidate = self._r.get('MISC|last-queued')
         if is_valid_track_seed(candidate):
-            seed_song = candidate
+            return candidate
 
-        # 2. Last Bender track (for continuous discovery)
-        if not seed_song:
-            candidate = self._r.get('MISC|last-bender-track')
+        candidate = self._r.get('MISC|last-bender-track')
+        if is_valid_track_seed(candidate):
+            return candidate
+
+        now_playing_id = self._r.get('MISC|now-playing')
+        if now_playing_id:
+            candidate = self._r.hget('QUEUE|{}'.format(now_playing_id), 'trackid')
             if is_valid_track_seed(candidate):
-                seed_song = candidate
+                return candidate
 
-        # 3. Currently playing track (skip if it's an episode)
-        if not seed_song:
-            now_playing_id = self._r.get('MISC|now-playing')
-            if now_playing_id:
-                candidate = self._r.hget('QUEUE|{}'.format(now_playing_id), 'trackid')
-                if is_valid_track_seed(candidate):
-                    seed_song = candidate
+        logger.debug("Using fallback seed (no valid track seeds found)")
+        return "spotify:track:3utq2FgD1pkmIoaWfjXWAU"
 
-        # 4. Ultimate fallback - Billy Joel (only if nothing else available)
-        if not seed_song:
-            seed_song = "spotify:track:3utq2FgD1pkmIoaWfjXWAU"
-            logger.debug("Using fallback seed (no valid track seeds found, possibly playing episode)")
+    def _get_seed_info(self):
+        """Fetch and cache seed artist metadata in BENDER|seed-info hash.
 
-        # Extract track ID from URI
-        seed_song = seed_song.split(":")[-1]
-        logger.debug("Bender seed song: %s" % seed_song)
+        Returns dict with keys: artist_id, artist_name, album_id, genres, seed_uri
+        or None if unable to resolve.
+        """
+        seed_uri = self._resolve_seed_uri()
+        track_id = seed_uri.split(":")[-1]
 
-        market = CONF.BENDER_REGIONS[0] if CONF.BENDER_REGIONS else 'US'
+        # Check cache
+        cached = self._r.hgetall('BENDER|seed-info')
+        if cached and cached.get('seed_uri') == seed_uri:
+            cached['genres'] = json.loads(cached.get('genres', '[]'))
+            return cached
 
-        # Get the seed track details
+        # Stale or missing — delete and re-fetch
+        if cached:
+            self._r.delete('BENDER|seed-info')
+
+        if is_spotify_rate_limited():
+            logger.debug("_get_seed_info: Spotify rate limited")
+            return None
+
         try:
-            song_deets = spotify_client.track(seed_song)
-            seed_artists = [(a['id'], a['name']) for a in song_deets.get('artists', [])]
-            album_id = song_deets.get('album', {}).get('id')
+            song_deets = spotify_client.track(track_id)
+            artists = song_deets.get('artists', [])
+            if not artists:
+                return None
+            artist_id = artists[0]['id']
+            artist_name = artists[0]['name']
+            album_id = song_deets.get('album', {}).get('id', '')
+
+            # Fetch genres from artist endpoint
+            artist_data = spotify_client.artist(artist_id)
+            genres = artist_data.get('genres', [])
         except Exception as e:
             if handle_spotify_exception(e):
-                return []  # Rate limited - stop immediately
-            logger.warning("Error getting track details for seed: %s", seed_song)
-            logger.warning(traceback.format_exc())
+                return None
+            logger.warning("Error getting seed info for %s: %s", track_id, e)
+            return None
+
+        info = {
+            'artist_id': artist_id,
+            'artist_name': artist_name,
+            'album_id': album_id,
+            'genres': json.dumps(genres),
+            'seed_uri': seed_uri,
+        }
+        self._r.hset('BENDER|seed-info', mapping=info)
+        self._r.expire('BENDER|seed-info', 60 * 20)
+
+        info['genres'] = genres
+        return info
+
+    def _get_strategy_weights(self):
+        """Return strategy weights dict from config or default."""
+        weights = getattr(CONF, 'BENDER_STRATEGY_WEIGHTS', None)
+        if weights and isinstance(weights, dict):
+            return dict(weights)
+        return dict(self.STRATEGY_WEIGHTS_DEFAULT)
+
+    def _select_strategy_excluding(self, exclude_set):
+        """Weighted random pick from strategies, filtering out exclude_set.
+
+        Returns strategy name string or None if all exhausted.
+        """
+        weights = self._get_strategy_weights()
+        remaining = {k: v for k, v in weights.items()
+                     if k not in exclude_set and v > 0}
+        if not remaining:
+            return None
+        strategies = list(remaining.keys())
+        weight_values = [remaining[s] for s in strategies]
+        return random.choices(strategies, weights=weight_values, k=1)[0]
+
+    def _fill_strategy_cache(self, strategy, seed_info):
+        """Dispatch to the appropriate fetch method and cache results.
+
+        Returns count of tracks cached.
+        """
+        if is_spotify_rate_limited() and strategy != 'throwback':
+            return 0
+
+        market = CONF.BENDER_REGIONS[0] if CONF.BENDER_REGIONS else 'US'
+        seed_uri = seed_info.get('seed_uri', '') if seed_info else ''
+
+        if strategy == 'throwback':
+            return self._fill_throwback_cache()
+        elif strategy == 'genre':
+            uris = self._fetch_genre_tracks(seed_info, market)
+        elif strategy == 'artist_search':
+            uris = self._fetch_artist_search_tracks(seed_info, market)
+        elif strategy == 'top_tracks':
+            uris = self._fetch_top_tracks(seed_info, market)
+        elif strategy == 'album':
+            uris = self._fetch_album_tracks(seed_info)
+        else:
+            return 0
+
+        # Filter: remove seed, FILTER'd tracks, and dedupe
+        filtered = []
+        seen = set()
+        for uri in uris:
+            if uri == seed_uri:
+                continue
+            if uri in seen:
+                continue
+            if self._r.get("FILTER|%s" % uri):
+                continue
+            seen.add(uri)
+            filtered.append(uri)
+
+        random.shuffle(filtered)
+
+        if not filtered:
+            return 0
+
+        cache_key = self._STRATEGY_CACHE_KEYS[strategy]
+        self._r.rpush(cache_key, *filtered)
+        self._r.expire(cache_key, 60 * 20)
+        logger.debug("Cached %d tracks for strategy %s", len(filtered), strategy)
+        return len(filtered)
+
+    def _fetch_genre_tracks(self, seed_info, market):
+        """Search Spotify by one of the seed artist's genres."""
+        if not seed_info:
+            return []
+        genres = seed_info.get('genres', [])
+        if not genres:
+            return []
+        genre = random.choice(genres)
+        try:
+            results = spotify_client.search(q='genre:"%s"' % genre, type='track',
+                                            limit=20, market=market)
+            return [t['uri'] for t in results.get('tracks', {}).get('items', [])]
+        except Exception as e:
+            if handle_spotify_exception(e):
+                return []
+            logger.warning("Error fetching genre tracks for '%s': %s", genre, e)
             return []
 
-        out_tracks = []
-        seed_song_uri = "spotify:track:" + seed_song
+    def _fetch_artist_search_tracks(self, seed_info, market):
+        """Search Spotify by artist name to find collabs/features."""
+        if not seed_info:
+            return []
+        artist_name = seed_info.get('artist_name', '')
+        if not artist_name:
+            return []
+        try:
+            results = spotify_client.search(artist_name, limit=20,
+                                            type='track', market=market)
+            return [t['uri'] for t in results.get('tracks', {}).get('items', [])]
+        except Exception as e:
+            if handle_spotify_exception(e):
+                return []
+            logger.warning("Error searching for artist '%s': %s", artist_name, e)
+            return []
 
-        # Strategy 1: Get top tracks from each artist
-        for artist_id, artist_name in seed_artists[:2]:
-            try:
-                top_tracks = spotify_client.artist_top_tracks(artist_id, country=market)
-                for track in top_tracks.get('tracks', []):
-                    track_uri = track['uri']
-                    if track_uri == seed_song_uri:
-                        continue
-                    if self._r.get("FILTER|%s" % track_uri):
-                        continue
-                    out_tracks.append(track_uri)
-                logger.debug("Got %d top tracks from %s", len(top_tracks.get('tracks', [])), artist_name)
-            except Exception as e:
-                if handle_spotify_exception(e):
-                    return []  # Rate limited - stop immediately
-                logger.warning("Error getting top tracks for artist: %s", artist_id)
+    def _fetch_top_tracks(self, seed_info, market):
+        """Get top tracks from the seed artist."""
+        if not seed_info:
+            return []
+        artist_id = seed_info.get('artist_id', '')
+        if not artist_id:
+            return []
+        try:
+            result = spotify_client.artist_top_tracks(artist_id, country=market)
+            return [t['uri'] for t in result.get('tracks', [])]
+        except Exception as e:
+            if handle_spotify_exception(e):
+                return []
+            logger.warning("Error getting top tracks for artist %s: %s", artist_id, e)
+            return []
 
-        # Strategy 2: Get other tracks from the same album
-        if album_id:
-            try:
-                album_tracks = spotify_client.album_tracks(album_id)
-                for track in album_tracks.get('items', []):
-                    track_uri = track['uri']
-                    if track_uri == seed_song_uri:
-                        continue
-                    if self._r.get("FILTER|%s" % track_uri):
-                        continue
-                    if track_uri not in out_tracks:
-                        out_tracks.append(track_uri)
-                logger.debug("Got %d album tracks", len(album_tracks.get('items', [])))
-            except Exception as e:
-                if handle_spotify_exception(e):
-                    return []  # Rate limited - stop immediately
-                logger.warning("Error getting album tracks for: %s", album_id)
+    def _fetch_album_tracks(self, seed_info):
+        """Get tracks from the seed album."""
+        if not seed_info:
+            return []
+        album_id = seed_info.get('album_id', '')
+        if not album_id:
+            return []
+        try:
+            result = spotify_client.album_tracks(album_id)
+            return [t['uri'] for t in result.get('items', [])]
+        except Exception as e:
+            if handle_spotify_exception(e):
+                return []
+            logger.warning("Error getting album tracks for %s: %s", album_id, e)
+            return []
 
-        # Strategy 3: Search for artist name to find collaborations and similar
-        if seed_artists:
-            artist_name = seed_artists[0][1]
-            try:
-                search_results = spotify_client.search(artist_name, limit=20, type='track', market=market)
-                for track in search_results.get('tracks', {}).get('items', []):
-                    track_uri = track['uri']
-                    if track_uri == seed_song_uri:
-                        continue
-                    if self._r.get("FILTER|%s" % track_uri):
-                        continue
-                    if track_uri not in out_tracks:
-                        out_tracks.append(track_uri)
-                logger.debug("Got %d tracks from search", len(search_results.get('tracks', {}).get('items', [])))
-            except Exception as e:
-                if handle_spotify_exception(e):
-                    return []  # Rate limited - stop immediately
-                logger.warning("Error searching for artist: %s", artist_name)
+    def _fill_throwback_cache(self):
+        """Fill the throwback cache from historical play logs.
 
-        # Strategy 4: Throwback - pull from historical plays on same day of week
-        # These are stored separately with original user info
+        Uses a pipeline for atomic track+user storage. Returns count cached.
+        """
         try:
             throwback_plays = self._h.get_throwback_plays(limit=20)
-            throwback_added = 0
-            for play in throwback_plays:
-                track_uri = play.get('trackid')
-                original_user = play.get('user', 'the@echonest.com')
-                if track_uri == seed_song_uri:
-                    continue
-                if self._r.get("FILTER|%s" % track_uri):
-                    continue
-                if track_uri not in out_tracks:
-                    # Store throwback with original user in a separate queue
-                    self._r.rpush('MISC|throwback-songs', track_uri)
-                    self._r.hset('MISC|throwback-users', track_uri, original_user)
-                    throwback_added += 1
-            if throwback_added > 0:
-                self._r.expire('MISC|throwback-songs', 60*20)
-                self._r.expire('MISC|throwback-users', 60*20)
-            logger.debug("Got %d throwback tracks from history", throwback_added)
         except Exception:
             logger.warning("Error getting throwback tracks: %s", traceback.format_exc())
+            return 0
 
-        # Remove duplicates and shuffle for variety
-        out_tracks = list(dict.fromkeys(out_tracks))  # Preserve order, remove dupes
-        random.shuffle(out_tracks)
-        out_tracks = out_tracks[:20]
+        if not throwback_plays:
+            return 0
 
-        logger.debug("Bender found %d tracks total", len(out_tracks))
-        return out_tracks
+        pipe = self._r.pipeline()
+        count = 0
+        for play in throwback_plays:
+            track_uri = play.get('trackid')
+            original_user = play.get('user', 'the@echonest.com')
+            if not track_uri:
+                continue
+            if self._r.get("FILTER|%s" % track_uri):
+                continue
+            pipe.rpush('BENDER|cache:throwback', track_uri)
+            pipe.hset('BENDER|throwback-users', track_uri, original_user)
+            count += 1
+        if count > 0:
+            pipe.execute()
+            self._r.expire('BENDER|cache:throwback', 60 * 20)
+            self._r.expire('BENDER|throwback-users', 60 * 20)
+        logger.debug("Cached %d throwback tracks", count)
+        return count
+
+    def _clear_all_bender_caches(self):
+        """Delete all BENDER| cache keys."""
+        keys = list(self._STRATEGY_CACHE_KEYS.values()) + [
+            'BENDER|seed-info', 'BENDER|throwback-users', 'BENDER|next-preview',
+        ]
+        self._r.delete(*keys)
+
+    def _peek_next_fill_song(self):
+        """Non-consuming peek at the next Bender fill song.
+
+        Returns (track_uri, user, strategy) or (None, None, None).
+        Stores result in BENDER|next-preview for benderqueue/benderfilter.
+        """
+        # Check existing preview
+        preview = self._r.hgetall('BENDER|next-preview')
+        if preview and preview.get('trackid'):
+            track_uri = preview['trackid']
+            if not self._r.get("FILTER|%s" % track_uri):
+                return track_uri, preview.get('user', 'the@echonest.com'), preview.get('strategy', '')
+
+            # Preview is now filtered; clear it
+            self._r.delete('BENDER|next-preview')
+
+        # Use weighted random selection, falling through on failure
+        seed_info = None  # lazy-loaded
+        tried = set()
+
+        while True:
+            strategy = self._select_strategy_excluding(tried)
+            if not strategy:
+                break
+
+            cache_key = self._STRATEGY_CACHE_KEYS.get(strategy)
+            if not cache_key:
+                tried.add(strategy)
+                continue
+
+            track_uri = self._r.lindex(cache_key, 0)
+
+            # If cache empty, try to fill it
+            if not track_uri:
+                if seed_info is None:
+                    seed_info = self._get_seed_info()
+                filled = self._fill_strategy_cache(strategy, seed_info)
+                if filled > 0:
+                    track_uri = self._r.lindex(cache_key, 0)
+
+            if not track_uri:
+                tried.add(strategy)
+                continue
+
+            # Skip if filtered — drain filtered tracks from front of cache
+            if self._r.get("FILTER|%s" % track_uri):
+                while track_uri and self._r.get("FILTER|%s" % track_uri):
+                    self._r.lpop(cache_key)
+                    track_uri = self._r.lindex(cache_key, 0)
+                if not track_uri:
+                    tried.add(strategy)
+                    continue
+
+            # Determine user
+            if strategy == 'throwback':
+                user = self._r.hget('BENDER|throwback-users', track_uri) or 'the@echonest.com'
+            else:
+                user = 'the@echonest.com'
+
+            # Store preview
+            self._r.hset('BENDER|next-preview', mapping={
+                'trackid': track_uri,
+                'user': user,
+                'strategy': strategy,
+            })
+            return track_uri, user, strategy
+
+        return None, None, None
+
+    def ensure_queue_depth(self):
+        """Top up the priority queue to MIN_QUEUE_DEPTH with Bender songs.
+
+        Called after popping a song so there's always something on deck.
+        Respects USE_BENDER and MAX_BENDER_MINUTES settings.
+        """
+        min_depth = getattr(CONF, 'MIN_QUEUE_DEPTH', None) or 3
+        if not CONF.USE_BENDER:
+            return
+        queue_size = self._r.zcard('MISC|priority-queue')
+        if queue_size >= min_depth:
+            return
+        needed = min_depth - queue_size
+        logger.info("Queue depth %d < %d, adding %d Bender tracks", queue_size, min_depth, needed)
+        added = 0
+        for _ in range(needed):
+            if self.bender_streak() > CONF.MAX_BENDER_MINUTES * 60:
+                logger.info("Bender streak limit reached, stopping backfill")
+                break
+            try:
+                user, trackid = self.get_fill_song()
+                if user and trackid:
+                    self.add_spotify_song(user, trackid, scrobble=False)
+                    added += 1
+                else:
+                    break
+            except Exception:
+                logger.warning("ensure_queue_depth: couldn't add song: %s", traceback.format_exc())
+                break
+        if added > 0:
+            logger.info("Backfilled %d tracks to maintain queue depth", added)
 
     def ensure_fill_songs(self):
-        num_songs = self._r.llen('MISC|fill-songs')
-        if num_songs > 0:
+        """Lazy pre-warm: ensure at least one strategy cache has tracks."""
+        for cache_key in self._STRATEGY_CACHE_KEYS.values():
+            if self._r.llen(cache_key) > 0:
+                return  # At least one cache is warm
+
+        # All caches empty — fill the first strategy that succeeds
+        seed_info = self._get_seed_info()
+        if not seed_info:
+            logger.warning("ensure_fill_songs: couldn't resolve seed info")
             return
 
-        songs = self._grab_fill_in_songs()
-        logger.debug("ensure_fill_songs got: %s", songs)
-        if songs:
-            self._r.rpush('MISC|fill-songs', *songs)
-            # Store the last track as seed for next round of discovery
-            self._r.set('MISC|last-bender-track', songs[-1])
-        else:
-            logger.warning("Bender couldn't find any tracks - recommendations exhausted")
+        weights = self._get_strategy_weights()
+        for strategy in sorted(weights.keys(), key=lambda s: weights[s], reverse=True):
+            if weights[strategy] <= 0:
+                continue
+            filled = self._fill_strategy_cache(strategy, seed_info)
+            if filled > 0:
+                logger.debug("ensure_fill_songs: pre-warmed %s with %d tracks", strategy, filled)
+                return
+
+        logger.warning("Bender couldn't find any tracks - all strategies exhausted")
 
     def get_fill_song(self):
+        """Get the next fill song using per-song weighted strategy rotation.
+
+        Consumes the previewed track first (if one exists) so the UI preview
+        and the actual queue stay in sync. Falls back to weighted strategy
+        rotation if no preview is available.
+
+        Returns (user, track_uri) or (None, None) if all strategies exhausted.
+        """
+        # Check backup queue first (unchanged)
         song = self._r.lpop('MISC|backup-queue')
         if song:
             return self._r.hget('MISC|backup-queue-data', 'user'), song
         self._r.delete('MISC|backup-queue-data')
 
-        # Check throwback queue first - these have original user attribution
-        throwback_song = self._r.lpop('MISC|throwback-songs')
-        if throwback_song:
-            original_user = self._r.hget('MISC|throwback-users', throwback_song) or 'the@echonest.com'
-            self._r.hdel('MISC|throwback-users', throwback_song)
-            logger.debug("returning throwback song %s from %s", throwback_song, original_user)
-            self._r.set('MISC|last-bender-track', throwback_song)
-            return original_user, throwback_song
+        # Consume the preview if one exists — this is the track the UI is showing
+        preview = self._r.hgetall('BENDER|next-preview')
+        if preview and preview.get('trackid'):
+            track = preview['trackid']
+            strategy = preview.get('strategy', '')
+            user = preview.get('user', 'the@echonest.com')
 
-        song = self._r.lpop('MISC|fill-songs')
-        attempts = 0
-        while not song and attempts < 5:
-            attempts += 1
-            songs = self._grab_fill_in_songs()
-            logger.debug("get_fill_song attempt %d got: %s", attempts, songs)
-            if songs:
-                self._r.rpush('MISC|fill-songs', *songs)
-                self._r.expire('MISC|fill-songs', 60*20)
-                # Store last track as seed for continuous discovery
-                self._r.set('MISC|last-bender-track', songs[-1])
-            # Check throwback again after refill
-            throwback_song = self._r.lpop('MISC|throwback-songs')
-            if throwback_song:
-                original_user = self._r.hget('MISC|throwback-users', throwback_song) or 'the@echonest.com'
-                self._r.hdel('MISC|throwback-users', throwback_song)
-                logger.debug("returning throwback song %s from %s", throwback_song, original_user)
-                self._r.set('MISC|last-bender-track', throwback_song)
-                return original_user, throwback_song
-            song = self._r.lpop('MISC|fill-songs')
+            # Pop it from the strategy cache
+            cache_key = self._STRATEGY_CACHE_KEYS.get(strategy)
+            if cache_key:
+                self._r.lpop(cache_key)
+            if strategy == 'throwback':
+                self._r.hdel('BENDER|throwback-users', track)
+            self._r.delete('BENDER|next-preview')
 
-        if song:
-            logger.debug("returning song %s", song)
-            # Update last-bender-track so next batch continues from here
-            self._r.set('MISC|last-bender-track', song)
-            return 'the@echonest.com', song
-        else:
-            logger.error("Bender exhausted all recommendation sources")
-            # Return None to signal no song available
+            # Verify it's not filtered since the preview was created
+            if not self._r.get("FILTER|%s" % track):
+                self._r.set('MISC|last-bender-track', track)
+                logger.info("get_fill_song: strategy=%s, track=%s, user=%s (from preview)", strategy, track, user)
+                return user, track
+            # If filtered, fall through to normal rotation below
+
+        if is_spotify_rate_limited():
+            # Throwback doesn't need Spotify API, try it directly
+            track = self._r.lpop('BENDER|cache:throwback')
+            if track:
+                user = self._r.hget('BENDER|throwback-users', track) or 'the@echonest.com'
+                self._r.hdel('BENDER|throwback-users', track)
+                self._r.set('MISC|last-bender-track', track)
+                logger.info("get_fill_song: strategy=throwback, track=%s, user=%s", track, user)
+                return user, track
+            # Try to fill throwback cache
+            if self._fill_throwback_cache() > 0:
+                track = self._r.lpop('BENDER|cache:throwback')
+                if track:
+                    user = self._r.hget('BENDER|throwback-users', track) or 'the@echonest.com'
+                    self._r.hdel('BENDER|throwback-users', track)
+                    self._r.set('MISC|last-bender-track', track)
+                    logger.info("get_fill_song: strategy=throwback, track=%s, user=%s", track, user)
+                    return user, track
             return None, None
+
+        seed_info = self._get_seed_info()
+        tried = set()
+
+        while True:
+            strategy = self._select_strategy_excluding(tried)
+            if strategy is None:
+                logger.error("Bender exhausted all recommendation strategies")
+                return None, None
+
+            cache_key = self._STRATEGY_CACHE_KEYS[strategy]
+            track = self._r.lpop(cache_key)
+
+            # If cache empty, try to fill it
+            if not track:
+                if seed_info:
+                    self._fill_strategy_cache(strategy, seed_info)
+                track = self._r.lpop(cache_key)
+
+            # If still empty, this strategy is exhausted
+            if not track:
+                tried.add(strategy)
+                continue
+
+            # Check if track is filtered; drain cache for a clean one
+            while track and self._r.get("FILTER|%s" % track):
+                if strategy == 'throwback':
+                    self._r.hdel('BENDER|throwback-users', track)
+                track = self._r.lpop(cache_key)
+
+            if not track:
+                tried.add(strategy)
+                continue
+
+            # Determine user
+            if strategy == 'throwback':
+                user = self._r.hget('BENDER|throwback-users', track) or 'the@echonest.com'
+                self._r.hdel('BENDER|throwback-users', track)
+            else:
+                user = 'the@echonest.com'
+
+            self._r.set('MISC|last-bender-track', track)
+            logger.info("get_fill_song: strategy=%s, track=%s, user=%s", strategy, track, user)
+            return user, track
 
     def bender_streak(self):
         now = self.player_now()
@@ -453,9 +730,8 @@ class DB(object):
             if finish_on and pickle_load_b64(finish_on) > self.player_now():
                 done = pickle_load_b64(finish_on)
             else:
-                if song:
+                if song and song.get('id'):
                     self.log_finished_song(song)
-                    
 
                 song = self.pop_next()
                 if not song:
@@ -481,6 +757,12 @@ class DB(object):
                     datetime.timedelta(seconds=song['duration'],
                                        milliseconds=1000)
 
+            # Top up queue so there's always something on deck
+            try:
+                self.ensure_queue_depth()
+            except Exception:
+                logger.warning("ensure_queue_depth failed: %s", traceback.format_exc())
+
             id = song['trackid']
             expire_on = int((done - self.player_now()).total_seconds())
 
@@ -491,10 +773,20 @@ class DB(object):
                           self.player_now().isoformat())
             while self.player_now() < done:
                 paused = self._r.get('MISC|paused')
-                while paused:
-                    logger.info("paused, sleeping 1s")
-                    time.sleep(1)
-                    paused = self._r.get('MISC|paused')
+                if paused:
+                    logger.info("paused at %s", self.player_now())
+                    while paused:
+                        time.sleep(1)
+                        self._r.expire('MISC|master-player', 10)
+                        paused = self._r.get('MISC|paused')
+                    # Recalculate done: player_now didn't advance while paused,
+                    # so the remaining time is still correct, but we need to
+                    # refresh the MISC|current-done TTL since real time passed.
+                    remaining = int((done - self.player_now()).total_seconds())
+                    done = self.player_now() + datetime.timedelta(seconds=remaining, milliseconds=500)
+                    expire_on = max(remaining, 1)
+                    self._r.setex('MISC|current-done', expire_on, pickle_dump_b64(done))
+                    logger.info("unpaused, %d seconds remaining", remaining)
                 self._r.expire('MISC|master-player', 5)
                 if self._r.get('MISC|force-jump'):
                     self._r.delete('MISC|force-jump')
@@ -540,11 +832,15 @@ class DB(object):
         if len(queued) == 1:
             return 1.0
 
+        # Auto-fill songs (Bender) always go to the end of the queue.
+        # The fair-scheduling interleave is only for human-queued songs.
+        if song.get('auto'):
+            return queued[-2]['score'] + 1.0
+
         # this counts how many tracks this user will have in the queue including this (so start from 1)
         this_user_songs_in_queue = 1
         for i in range(0, len(queued) - 1):
             x = queued[i]
-            print(str(json.dumps(x)))
             if x.get('user','') == userid:
                 this_user_songs_in_queue += 1
 
@@ -935,44 +1231,43 @@ class DB(object):
 
 
     def benderqueue(self, trackId, userid):
-        # Check throwback queue first
-        throwbackFrontId = self._r.lindex('MISC|throwback-songs', 0)
-        if trackId == throwbackFrontId:
-            self._r.lpop('MISC|throwback-songs')
-            original_user = self._r.hget('MISC|throwback-users', trackId) or 'the@echonest.com'
-            self._r.hdel('MISC|throwback-users', trackId)
-            newId = self.add_spotify_song(userid, throwbackFrontId)
-            self.jam(newId, original_user)
+        """Queue the previewed Bender song (user clicked 'queue' on preview card)."""
+        preview = self._r.hgetall('BENDER|next-preview')
+        if not preview or preview.get('trackid') != trackId:
+            logger.warning("benderqueue mismatch: trackId=%s preview=%s", trackId, preview)
             return
 
-        frontId = self._r.lindex('MISC|fill-songs', 0)
-        if trackId == frontId:
-            self._r.lpop('MISC|fill-songs')
-            newId = self.add_spotify_song(userid, frontId)
-            self.jam(newId, 'the@echonest.com')
+        strategy = preview.get('strategy', '')
+        cache_key = self._STRATEGY_CACHE_KEYS.get(strategy)
+        if cache_key:
+            self._r.lpop(cache_key)
+
+        original_user = preview.get('user', 'the@echonest.com')
+        if strategy == 'throwback':
+            self._r.hdel('BENDER|throwback-users', trackId)
+
+        self._r.delete('BENDER|next-preview')
+        newId = self.add_spotify_song(userid, trackId)
+        self.jam(newId, original_user)
 
     def benderfilter(self, trackId, userid):
-        # Check throwback queue first
-        throwbackFrontId = self._r.lindex('MISC|throwback-songs', 0)
-        logger.debug("benderfilter called: trackId=%s, throwbackFrontId=%s", trackId, throwbackFrontId)
-        if trackId == throwbackFrontId:
-            self._r.lpop('MISC|throwback-songs')
-            self._r.hdel('MISC|throwback-users', trackId)
-            self._r.setex('FILTER|%s' % trackId, CONF.BENDER_FILTER_TIME, 1)
-            self._msg('playlist_update')
-            logger.info("benderfilter (throwback) " + str(trackId) + " by " + userid)
-            return
+        """Filter a Bender preview song and rotate to the next one."""
+        preview = self._r.hgetall('BENDER|next-preview')
 
-        frontId = self._r.lindex('MISC|fill-songs', 0)
-        logger.debug("benderfilter checking fill-songs: frontId=%s", frontId)
-        if trackId == frontId:
-            #take this off bender's preview and add it to the filter
-            self._r.lpop('MISC|fill-songs')
-            self._r.setex('FILTER|%s' % frontId, CONF.BENDER_FILTER_TIME, 1)
-            self._msg('playlist_update')
-            logger.info("benderfilter " + str(frontId) + " by " + userid)
-        else:
-            logger.warning("benderfilter mismatch: trackId=%s != frontId=%s (throwback=%s)", trackId, frontId, throwbackFrontId)
+        # Clean up preview/cache state if it matches the filtered track
+        if preview and preview.get('trackid') == trackId:
+            strategy = preview.get('strategy', '')
+            cache_key = self._STRATEGY_CACHE_KEYS.get(strategy)
+            if cache_key:
+                self._r.lpop(cache_key)
+            if strategy == 'throwback':
+                self._r.hdel('BENDER|throwback-users', trackId)
+
+        # Always clear the preview so a fresh one is generated on next get_additional_src
+        self._r.delete('BENDER|next-preview')
+        self._r.setex('FILTER|%s' % trackId, CONF.BENDER_FILTER_TIME, 1)
+        self._msg('playlist_update')
+        logger.info("benderfilter %s by %s", trackId, userid)
 
 
     def get_song_from_queue(self, id):
@@ -1020,62 +1315,50 @@ class DB(object):
     def get_additional_src(self):
         raw = self._r.hgetall('MISC|backup-queue-data')
         if not raw:
-            # Skip Spotify API calls entirely when rate limited - return placeholder immediately
-            if is_spotify_rate_limited():
-                logger.debug("get_additional_src: Spotify rate limited, returning placeholder")
-                return {'playlist_src': True, 'name': 'Benderbot', 'user': 'the@echonest.com',
-                        'title': 'Rate limited - songs paused', 'img': '', 'jam': [], 'dm_buttons': False}
-
-            # Avoid infinite loops if fill songs can't be fetched (e.g., invalid Spotify creds)
+            # Use _peek_next_fill_song to find the next preview
             for _ in range(5):
                 try:
-                    self.ensure_fill_songs()  # so we have something to preview
+                    self.ensure_fill_songs()
                 except Exception as e:
                     logger.warning("Failed to ensure fill songs: %s", e)
                     break
 
-                # Check throwback queue first - show original user
-                throwbackSong = self._r.lindex('MISC|throwback-songs', 0)
-                if throwbackSong:
-                    try:
-                        original_user = self._r.hget('MISC|throwback-users', throwbackSong) or 'the@echonest.com'
-                        fillInfo = self.get_fill_info(throwbackSong)
-                        title = fillInfo['title']
-                        fillInfo['title'] = fillInfo['artist'] + " : " + title
-                        # Show original user's name instead of Benderbot
-                        fillInfo['name'] = original_user.split('@')[0] + " (throwback)"
-                        fillInfo['user'] = original_user
-                        fillInfo['playlist_src'] = True
-                        fillInfo["dm_buttons"] = False
-                        fillInfo["jam"] = []
-                        return fillInfo
-                    except Exception:
-                        logger.error('throwback song not available: %s', throwbackSong)
-                        logger.error('backtrace: %s', traceback.format_exc())
-                        self._r.lpop('MISC|throwback-songs')
-                        self._r.hdel('MISC|throwback-users', throwbackSong)
-                        continue
-
-                fillSong = self._r.lindex('MISC|fill-songs', 0)
-                if not fillSong:
+                track_uri, user, strategy = self._peek_next_fill_song()
+                if not track_uri:
                     break
-                # show bender preview!
+
                 try:
-                    fillInfo = self.get_fill_info(fillSong)
+                    fillInfo = self.get_fill_info(track_uri)
                     title = fillInfo['title']
                     fillInfo['title'] = fillInfo['artist'] + " : " + title
-                    fillInfo['name'] = 'Benderbot'
-                    fillInfo['user'] = 'the@echonest.com'
+
+                    if strategy == 'throwback':
+                        fillInfo['name'] = user.split('@')[0] + " (throwback)"
+                        fillInfo['user'] = user
+                    else:
+                        fillInfo['name'] = 'Benderbot'
+                        fillInfo['user'] = 'the@echonest.com'
+
                     fillInfo['playlist_src'] = True
-                    fillInfo["dm_buttons"] = False
-                    fillInfo["jam"] = []
+                    fillInfo['dm_buttons'] = False
+                    fillInfo['jam'] = []
                     return fillInfo
                 except Exception:
-                    logger.error('song not available in this region: %s', fillSong)
-                    logger.error('backtrace just to be sure: %s', traceback.format_exc())
-                    self._r.lpop('MISC|fill-songs')
+                    logger.error('song not available: %s', track_uri)
+                    logger.error('backtrace: %s', traceback.format_exc())
+                    # Clear preview and pop from cache so we move to next
+                    preview = self._r.hgetall('BENDER|next-preview')
+                    if preview:
+                        strat = preview.get('strategy', '')
+                        ck = self._STRATEGY_CACHE_KEYS.get(strat)
+                        if ck:
+                            self._r.lpop(ck)
+                        if strat == 'throwback':
+                            self._r.hdel('BENDER|throwback-users', track_uri)
+                        self._r.delete('BENDER|next-preview')
+                    continue
 
-            # Fallback when fill songs are unavailable; prevents /queue timeout
+            # Fallback when fill songs are unavailable
             return {'playlist_src': True, 'name': 'Benderbot', 'user': 'the@echonest.com',
                     'title': 'No songs available', 'img': '', 'jam': [], 'dm_buttons': False}
 
@@ -1103,11 +1386,15 @@ class DB(object):
             song = song[0]
             self._r.zrem('MISC|priority-queue', song)
             data = self.get_song_from_queue(song)
+
+            # Always clear the preview so the UI shows a fresh next track
+            self._r.delete('BENDER|next-preview')
+
             if (data and data['src'] == 'spotify'
                     and data['user'] != 'the@echonest.com'):
-                #got something from a human, set last-queued and clear fill-songs
+                #got something from a human, set last-queued and clear bender caches
                 self._r.set('MISC|last-queued', data['trackid'])
-                self._r.delete('MISC|fill-songs')
+                self._clear_all_bender_caches()
                 try:
                     self.ensure_fill_songs()
                 except Exception as e:
@@ -1145,13 +1432,18 @@ class DB(object):
         song = self._r.get('MISC|now-playing')
         if song:
             rv = self.get_song_from_queue(song)
-            p_endtime = self._r.get('MISC|current-done')
-            rv['starttime'] = self._r.get('MISC|started-on')
-            rv['endtime'] = self.song_end_time(use_estimate=True)
-            rv['pos'] = 0
-            if p_endtime:
-                remaining = (pickle_load_b64(p_endtime) - self.player_now()).total_seconds()
-                rv['pos'] = int(max(0,rv['duration'] - remaining))
+            if not rv or not rv.get('trackid'):
+                # Song data was cleaned up but MISC|now-playing is stale
+                self._r.delete('MISC|now-playing')
+                rv = {}
+            else:
+                p_endtime = self._r.get('MISC|current-done')
+                rv['starttime'] = self._r.get('MISC|started-on')
+                rv['endtime'] = self.song_end_time(use_estimate=True)
+                rv['pos'] = 0
+                if p_endtime:
+                    remaining = (pickle_load_b64(p_endtime) - self.player_now()).total_seconds()
+                    rv['pos'] = int(max(0,rv['duration'] - remaining))
 
         paused = self._r.get('MISC|paused')
         rv['paused'] = False
@@ -1263,6 +1555,16 @@ class DB(object):
 
     def unpause(self, email):
         self._r.delete('MISC|paused')
+        # If the song timer expired while paused, clear stale now-playing
+        # so the player loop advances to the next track immediately.
+        now_playing_id = self._r.get('MISC|now-playing')
+        current_done = self._r.get('MISC|current-done')
+        if now_playing_id and not current_done:
+            song_data = self._r.hgetall('QUEUE|{}'.format(now_playing_id))
+            if not song_data or not song_data.get('trackid'):
+                # Song data is gone, clean up the stale reference
+                self._r.delete('MISC|now-playing')
+                logger.info("unpause: cleared stale now-playing %s (no song data)", now_playing_id)
         self._msg('now_playing_update')
 
     def trim_horns(self):

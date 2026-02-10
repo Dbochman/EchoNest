@@ -47,6 +47,13 @@ OAUTH_CACHE_PATH: "./oauth_creds"
 USE_BENDER: true
 MAX_BENDER_MINUTES: 120
 BENDER_FILTER_TIME: 604800  # 1 week in seconds
+MIN_QUEUE_DEPTH: 3  # Auto-fill queue when fewer than this many tracks are queued
+BENDER_STRATEGY_WEIGHTS:
+  genre: 35
+  throwback: 30
+  artist_search: 25
+  top_tracks: 5
+  album: 5
 BENDER_REGIONS:
   - US
 
