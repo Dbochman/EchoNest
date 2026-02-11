@@ -17,7 +17,13 @@ Kept as a reference for test intent and coverage ideas.
 
 ---
 
-## File: `test/test_nests_db.py` — DB Key Scoping
+## Archive: Original Test Design (not implemented)
+
+The following was the original multi-file test design. Codex instead produced
+a single `test/test_nests.py` with xfail contract tests. This section is kept
+for coverage reference only — do not create these files or follow these patterns.
+
+### File: `test/test_nests_db.py` — DB Key Scoping
 
 ### Class: `TestDBKeyMethod`
 

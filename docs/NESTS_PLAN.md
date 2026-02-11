@@ -545,7 +545,7 @@ POST /api/nests/{code}/invites/rotate   → rotate invite token
 
 - Gate admin routes via plan checks (`NEST_ADMIN_PLAN`) and a verified billing status.
 - Consider soft-gating: allow UI preview but enforce on save.
-- Vanity URLs should be reserved and immutable once claimed unless admin releases them.
+- Vanity URLs can be changed or released by the creator at any time (no hold period, immediate release — see D006).
 - If a plan lapses, keep current settings but block edits until upgraded.
 - Tier split confirmed:
   - **Tier A:** Vanity URL + Theme
