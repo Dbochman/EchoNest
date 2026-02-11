@@ -117,3 +117,12 @@ For async handoffs, use `docs/NESTS_HANDOFF_TEMPLATE.md`.
 **Context:** T13 was a single task covering HTML/CSS layout, modal interactions, API calls, clipboard API, and theme integration. Phase 3 had no acceptance criteria (just "visual inspection needed").
 **Decision:** Split T13 into T13a (static HTML/CSS bar) and T13b (JavaScript interactions). Added explicit acceptance criteria to all Phase 3 tasks. Added dependency chains.
 **Rationale:** T13a can be verified visually without any API. T13b requires working API routes (T7). Acceptance criteria prevent scope creep and make it clear when a task is done.
+
+---
+
+## D015: Redis client passed explicitly to helpers (no global singleton)
+**Date:** 2026-02-11 (pre-implementation review)
+**Context:** `refresh_member_ttl` in `nests.py` needs a Redis connection to `SET ... EX`. Question arose about whether to use a global Redis singleton, create a connection internally, or accept a parameter.
+**Decision:** All `nests.py` helpers that need Redis take an explicit `redis_client` parameter. Signature: `refresh_member_ttl(redis_client, nest_id, email, ttl_seconds=90)`. The caller (e.g., WebSocket serve loop) passes `db._r`.
+**Rationale:** Matches how `db.py` works (owns the connection, methods use `self._r`). Avoids hidden global state. Makes testing trivial (pass a fakeredis instance). Prevents divergence between async implementers who might each create their own Redis client strategy.
+**Alternatives:** Global `redis.Redis()` singleton in `nests.py` (hidden dependency, hard to test), connection created per-call (wasteful, connection pool exhaustion risk).

@@ -15,6 +15,9 @@ Kept as a reference for test intent and coverage ideas.
 - **Task mapping:** `docs/NESTS_TASKS.md` — maps test classes to implementation tasks
 - **No fakeredis** in current tests (may be added during implementation for DB-level unit tests)
 
+**Stop reading here.** Everything below is archived original design that was NOT implemented.
+Use `test/test_nests.py` and `docs/NESTS_TASKS.md` as your sources of truth.
+
 ---
 
 ## Archive: Original Test Design (not implemented)

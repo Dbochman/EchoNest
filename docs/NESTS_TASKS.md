@@ -122,9 +122,10 @@ These are the test classes that should flip from `xfail` to passing, grouped by 
   - `pubsub_channel(nest_id)` — returns `f"NEST:{nest_id}|MISC|update-pubsub"`
   - `members_key(nest_id)` — returns `f"NEST:{nest_id}|MEMBERS"`
   - `member_key(nest_id, email)` — returns `f"NEST:{nest_id}|MEMBER:{email}"`
-  - `refresh_member_ttl(nest_id, email, ttl_seconds=90)` — sets member TTL key
-  - `should_delete_nest(metadata, members, queue_size, now)` — cleanup predicate
+  - `refresh_member_ttl(redis_client, nest_id, email, ttl_seconds=90)` — sets member TTL key via passed-in Redis client (no global singleton; caller provides `db._r`)
+  - `should_delete_nest(metadata, members, queue_size, now)` — cleanup predicate (pure logic, no Redis)
   - Leave `NestManager` and `join_nest`/`leave_nest` stubs as `NotImplementedError` (implemented in T6)
+- **Redis client convention:** All helpers that need Redis take an explicit `redis_client` parameter. No global singletons. The caller (WebSocket serve loop, NestManager, etc.) already has a Redis connection and passes it through. This matches how `db.py` works.
 - `migrate_keys.py` script that:
   - Connects to Redis and renames all existing keys to `NEST:main|` prefix
   - Uses `SCAN` to find keys matching ALL known prefixes:
@@ -252,8 +253,8 @@ These are the test classes that should flip from `xfail` to passing, grouped by 
 **Depends on:** T9a (WebSocket routing must be in place)
 **Changes:**
 - Add heartbeat refresh in `MusicNamespace.serve()` loop:
-  - On connect: `refresh_member_ttl(nest_id, email, ttl_seconds=90)` from `nests.py`
-  - Every 30s in serve loop: call `refresh_member_ttl()` again
+  - On connect: `refresh_member_ttl(self.db._r, nest_id, email, ttl_seconds=90)` — pass Redis client from DB instance
+  - Every 30s in serve loop: call `refresh_member_ttl()` again with same client
   - Use `member_key(nest_id, email)` from `nests.py` for key format: `SET NEST:{id}|MEMBER:{email} 1 EX 90`
 - On disconnect (in `serve()` finally block): delete the member TTL key AND SREM from MEMBERS set
 - **Design:** The MEMBERS set tracks who's in the nest; the `MEMBER:{email}` TTL keys track liveness. Cleanup (T10) checks member TTL keys — if all are expired, the MEMBERS set is stale and the nest can be deleted.

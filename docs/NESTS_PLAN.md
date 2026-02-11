@@ -348,15 +348,21 @@ When in the Main Nest, show a subtle "Build a Nest" button (doesn't clutter the 
 2. Refactor all Redis key references to use `_key()`
 3. Default `nest_id="main"`
 4. Deploy a compatibility build that reads both `MISC|*` and `NEST:main|MISC|*` (write to both if needed)
-5. Run a one-time migration script that renames existing keys:
+5. Run a one-time migration script (`migrate_keys.py`) that renames existing keys using `DUMP`+`RESTORE`+`DEL`:
    ```
    MISC|now-playing → NEST:main|MISC|now-playing
    ```
+   - Must expose a `migrate()` function (contract tests verify this)
+   - Uses `SCAN` to cover ALL 9 Redis key prefix families (see Redis Key Reference below)
+   - Idempotent: skips keys that already have `NEST:` prefix; skips if destination exists
 6. Deploy a cleanup build that stops reading legacy keys — behavior is identical, all data now lives under `NEST:main|*`
 
 ### Phase 2: Nest Backend
 
-1. Add `NestManager` class
+1. Add `NestManager` class in `nests.py` (module at project root — tests import via `importlib.import_module("nests")`)
+   - Scaffold already exists with `NotImplementedError` stubs; implementation replaces stubs
+   - Helper functions (pure) + `NestManager` (Redis CRUD) + module-level `join_nest`/`leave_nest` wrappers all live in this one file
+   - Helpers that need Redis take an explicit `redis_client` parameter (no global singleton)
 2. Add nest CRUD API routes
 3. Make WebSocket accept nest_id
 4. Add nest cleanup to master_player
