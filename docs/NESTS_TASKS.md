@@ -63,7 +63,7 @@ These are the test classes that should flip from `xfail` to passing:
 ## Pre-flight
 
 - [x] **T0: Merge Codex test branch** — `test/test_nests.py` already on `feature/nests` (shared history with `feature/nests-tests`).
-- [ ] **T0.1: Add fakeredis to requirements.txt** — `fakeredis>=2.0` (if not already present — check first)
+- [ ] **T0.1: Add fakeredis to requirements.txt** — `fakeredis>=2.0` (if not already present). Note: existing Codex contract tests in `test/test_nests.py` use Flask test client, not fakeredis. But `fakeredis` is needed for DB-level unit tests added during implementation.
 
 ---
 

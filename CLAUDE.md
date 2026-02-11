@@ -107,7 +107,7 @@ Server-side Spotify playback control via REST API. The `_get_spotify_client()` h
 
 **Plan:** See `docs/NESTS_PLAN.md` for full spec.
 **Decision Log:** See `docs/NESTS_DECISION_LOG.md` — append every judgment call here.
-**Test Spec:** See `docs/NESTS_TEST_SPEC.md` — Codex writes tests, Claude verifies against them.
+**Test Spec:** See `docs/NESTS_TEST_SPEC.md` (superseded — kept as reference). Canonical tests: `test/test_nests.py`.
 **Branch:** `feature/nests`
 
 ### What Are Nests?
@@ -155,14 +155,14 @@ NEST:{nest_id}|MEMBERS
 ### Testing
 
 ```bash
-# Run nest tests
-SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests_*.py -v
+# Run nest tests (single file with xfail contract tests)
+SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py -v
 
 # Run all tests (ensure no regressions)
 SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest -v
 ```
 
-Tests use `fakeredis` for Redis isolation. DB class accepts optional `redis_client` param for test injection.
+Tests are xfail contract tests using Flask test client (no fakeredis). Implementation should add `redis_client` param to `DB.__init__` (T1) and `fakeredis` to requirements (T0.1) for future unit tests, but the existing Codex tests don't require them.
 
 ### Decision Protocol
 

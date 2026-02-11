@@ -1,5 +1,11 @@
 # Nests Test Specification
 
+> **SUPERSEDED:** This spec was written before Codex generated the actual tests.
+> The canonical test file is `test/test_nests.py` — a single file with xfail
+> contract tests (no fakeredis, no multi-file split). See `docs/NESTS_TASKS.md`
+> for the authoritative test class → task mapping. This file is kept as a
+> reference for test intent but should NOT be used to guide implementation.
+
 Test suite for the Nests MVP (Phases 1-3). Tests should be written by Codex
 before implementation begins. Claude will run these tests to verify each step.
 

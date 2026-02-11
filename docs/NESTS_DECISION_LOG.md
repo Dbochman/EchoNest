@@ -43,3 +43,35 @@ Each entry documents what was decided, why, and any alternatives considered.
 **Context:** T2 wraps all DB class Redis keys with `_key()` for nest-scoping.
 **Decision:** `MISC|spotify-rate-limited` must NOT be wrapped. It's a global Spotify API concern, not per-nest.
 **Rationale:** Rate limiting is per-Spotify-app, not per-nest. If one nest triggers a rate limit, all nests should back off. The key is already used in module-level functions (not DB class methods), so it naturally stays global — but T2 should explicitly verify it wasn't accidentally wrapped.
+
+---
+
+## D006: Vanity URL has no hold period on release
+**Date:** 2026-02-11 (pre-implementation review)
+**Context:** Vanity URL Policy section said "reserved for 30 days" but Open Questions confirmed "no hold period."
+**Decision:** Immediate release on change. No hold period.
+**Rationale:** Simplicity for MVP. Holding vanity codes requires a separate reservation system and TTL cleanup. If impersonation becomes a problem, can add hold periods later.
+
+---
+
+## D007: POST /api/nests returns 200, not 201
+**Date:** 2026-02-11 (pre-implementation review)
+**Context:** `docs/NESTS_TEST_SPEC.md` specified 201 for create, but Codex's actual tests (`test/test_nests.py:52`) assert 200.
+**Decision:** Follow the actual tests — return 200 with nest metadata.
+**Rationale:** The Codex contract tests are the source of truth for the overnight run. The test spec is superseded. 200 is acceptable for create endpoints that return the created resource (Flask convention), and changing the tests would be more disruptive.
+
+---
+
+## D008: Single test file with xfail contracts (not multi-file unit tests)
+**Date:** 2026-02-11 (pre-implementation review)
+**Context:** `docs/NESTS_TEST_SPEC.md` proposed 6+ test files with fakeredis injection. Codex produced a single `test/test_nests.py` with Flask-client contract tests.
+**Decision:** Use Codex's approach as the primary test suite. Test spec marked as superseded reference. Implementation may add fakeredis-based unit tests if needed, but the overnight run targets passing the xfail contract tests.
+**Rationale:** Contract tests are what Codex wrote and what the task breakdown maps to. Adding a parallel test suite would be confusing and time-consuming.
+
+---
+
+## D009: Admin access is creator-only (no admin role)
+**Date:** 2026-02-11 (pre-implementation review)
+**Context:** Admin UX section said "creators (and admins)" but decisions confirmed "creator-only."
+**Decision:** Admin/settings access is strictly creator-only, defined by `created_by` email.
+**Rationale:** No admin role system exists or is planned for MVP. Adding one would require a permissions model. Creator-only is simple and sufficient.

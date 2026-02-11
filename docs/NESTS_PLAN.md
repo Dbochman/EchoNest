@@ -497,7 +497,7 @@ NEST:{id}|AIRHORN|{user}              → airhorn rate limit
 
 ### Admin UX Flow (minimal)
 
-1. **Admin entry point**: “Nest Settings” link visible only to creators (and admins) in the nest bar.
+1. **Admin entry point**: "Nest Settings" link visible only to the creator in the nest bar.
 2. **Plan gate**: If unpaid, show a paywall screen with feature list + upgrade CTA.
 3. **Settings tabs**:
    - **General**: name, vanity URL, invite-only toggle, rotate invite link.
@@ -513,7 +513,7 @@ NEST:{id}|AIRHORN|{user}              → airhorn rate limit
 - **Length**: 3–24 characters.
 - **Reserved words**: `admin`, `api`, `socket`, `nest`, `login`, `signup`, `static`, `assets`, `health`, `status`, `metrics`, `terms`, `privacy`.
 - **Collision**: case-insensitive; `jazznight` conflicts with `JazzNight`.
-- **Immutability**: once claimed, only creator (or admin) can release/change it; old vanity code is reserved for 30 days to prevent impersonation.
+- **Immutability**: once claimed, only creator can release/change it; old vanity code is released immediately on change (no hold period — confirmed in Open Questions).
 - **Abuse**: block obvious impersonation (configurable denylist).
 
 ### Suggested Data Additions
@@ -800,19 +800,19 @@ NEST:{id}|AUDIT -> list of JSON lines
 
 3. **Font whitelist:** Proposed initial list (Winamp-inspired, readable on web): `Tahoma`, `Trebuchet MS`, `Verdana`, `Arial Black`, `Impact`, `Lucida Sans`, `MS Sans Serif` (fallback to `sans-serif`).
 
-1. **Should Bender run in temporary nests?** It's nice for keeping music going, but adds load. Could default to off in temporary nests and let the creator toggle it.
+4. **Should Bender run in temporary nests?** It's nice for keeping music going, but adds load. Could default to off in temporary nests and let the creator toggle it.
 
-2. **Should users be in multiple nests simultaneously?** Probably not for MVP — you're in one nest at a time. The WebSocket is per-nest. (If we add this later, membership tracking should use session IDs rather than emails.)
+5. **Should users be in multiple nests simultaneously?** Probably not for MVP — you're in one nest at a time. The WebSocket is per-nest. (If we add this later, membership tracking should use session IDs rather than emails.)
 
-3. **Nest persistence across deploys?** Since nests are in Redis and Redis persists (RDB/AOF), nests survive container restarts. But should they survive intentional deploys? Probably yes for short-lived nests.
+6. **Nest persistence across deploys?** Since nests are in Redis and Redis persists (RDB/AOF), nests survive container restarts. But should they survive intentional deploys? Probably yes for short-lived nests.
 
-4. **Private nests?** For MVP, all nests are open (anyone with the code can join). Later: optional password or invite-only.
+7. **Private nests?** For MVP, all nests are open (anyone with the code can join). Later: optional password or invite-only.
 
-5. **Should play history (throwback data) be shared across nests or per-nest?** Probably shared — throwback data is historical and global.
+8. **Should play history (throwback data) be shared across nests or per-nest?** Probably shared — throwback data is historical and global.
 
-6. **Main Nest vs. temporary nest feature parity?** The Main Nest should have every feature temporary nests have. Nests are just isolated instances of the same experience.
+9. **Main Nest vs. temporary nest feature parity?** The Main Nest should have every feature temporary nests have. Nests are just isolated instances of the same experience.
 
-7. ~~**echone.st — register now or later?**~~ **DONE.** Domain registered 2026-02-11 via Netim ($21.50/yr). Includes free Lite Hosting for 12 months. Ready to configure.
+10. ~~**echone.st — register now or later?**~~ **DONE.** Domain registered 2026-02-11 via Netim ($21.50/yr). Includes free Lite Hosting for 12 months. Ready to configure.
 
 ---
 
