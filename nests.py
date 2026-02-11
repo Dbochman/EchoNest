@@ -144,7 +144,7 @@ def should_delete_nest(metadata, members, queue_size, now):
 
     # Check inactivity timeout
     last_activity_str = metadata.get("last_activity")
-    ttl_minutes = metadata.get("ttl_minutes", 120)
+    ttl_minutes = metadata.get("ttl_minutes", 5)
 
     if last_activity_str:
         last_activity = datetime.datetime.fromisoformat(last_activity_str)
@@ -239,7 +239,7 @@ class NestManager:
             'is_main': False,
             'created_at': now,
             'last_activity': now,
-            'ttl_minutes': 120,
+            'ttl_minutes': 5,
         }
 
         # Store in registry hash (nest_id -> JSON metadata)

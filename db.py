@@ -347,6 +347,11 @@ class DB(object):
         weight_values = [remaining[s] for s in strategies]
         return random.choices(strategies, weights=weight_values, k=1)[0]
 
+    @property
+    def _bender_fetch_limit(self):
+        """Number of tracks to request from Spotify per cache fill."""
+        return 5 if self.nest_id != "main" else 20
+
     def _fill_strategy_cache(self, strategy, seed_info):
         """Dispatch to the appropriate fetch method and cache results.
 
@@ -357,13 +362,14 @@ class DB(object):
 
         market = CONF.BENDER_REGIONS[0] if CONF.BENDER_REGIONS else 'US'
         seed_uri = seed_info.get('seed_uri', '') if seed_info else ''
+        limit = self._bender_fetch_limit
 
         if strategy == 'throwback':
             return self._fill_throwback_cache()
         elif strategy == 'genre':
-            uris = self._fetch_genre_tracks(seed_info, market)
+            uris = self._fetch_genre_tracks(seed_info, market, limit)
         elif strategy == 'artist_search':
-            uris = self._fetch_artist_search_tracks(seed_info, market)
+            uris = self._fetch_artist_search_tracks(seed_info, market, limit)
         elif strategy == 'top_tracks':
             uris = self._fetch_top_tracks(seed_info, market)
         elif strategy == 'album':
@@ -395,7 +401,7 @@ class DB(object):
         logger.debug("Cached %d tracks for strategy %s", len(filtered), strategy)
         return len(filtered)
 
-    def _fetch_genre_tracks(self, seed_info, market):
+    def _fetch_genre_tracks(self, seed_info, market, limit=20):
         """Search Spotify by one of the seed artist's genres."""
         if not seed_info:
             return []
@@ -405,7 +411,7 @@ class DB(object):
         genre = random.choice(genres)
         try:
             results = spotify_client.search(q='genre:"%s"' % genre, type='track',
-                                            limit=20, market=market)
+                                            limit=limit, market=market)
             return [t['uri'] for t in results.get('tracks', {}).get('items', [])]
         except Exception as e:
             if handle_spotify_exception(e):
@@ -413,7 +419,7 @@ class DB(object):
             logger.warning("Error fetching genre tracks for '%s': %s", genre, e)
             return []
 
-    def _fetch_artist_search_tracks(self, seed_info, market):
+    def _fetch_artist_search_tracks(self, seed_info, market, limit=20):
         """Search Spotify by artist name to find collabs/features."""
         if not seed_info:
             return []
@@ -421,7 +427,7 @@ class DB(object):
         if not artist_name:
             return []
         try:
-            results = spotify_client.search(artist_name, limit=20,
+            results = spotify_client.search(artist_name, limit=limit,
                                             type='track', market=market)
             return [t['uri'] for t in results.get('tracks', {}).get('items', [])]
         except Exception as e:
@@ -578,6 +584,9 @@ class DB(object):
         Respects USE_BENDER and MAX_BENDER_MINUTES settings.
         """
         min_depth = getattr(CONF, 'MIN_QUEUE_DEPTH', None) or 3
+        # Temporary nests keep a smaller buffer to reduce Spotify API pressure
+        if self.nest_id != "main":
+            min_depth = 1
         if not CONF.USE_BENDER:
             return
         queue_size = self._r.zcard(self._key('MISC|priority-queue'))
