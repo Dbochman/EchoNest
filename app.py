@@ -904,7 +904,7 @@ def queue_specific(id):
 def main():
     return render_template('main.html',
                            nest_id='main', nest_code='main',
-                           nest_name='Main Nest', is_main_nest=True)
+                           nest_name='Home Nest', is_main_nest=True)
 
 
 @app.route('/nest/<code>')

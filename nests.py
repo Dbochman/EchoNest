@@ -186,7 +186,7 @@ class NestManager:
             metadata = {
                 'nest_id': 'main',
                 'code': 'main',
-                'name': 'Main Nest',
+                'name': 'Home Nest',
                 'creator': 'system',
                 'is_main': True,
                 'created_at': datetime.datetime.now().isoformat(),

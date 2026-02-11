@@ -92,15 +92,19 @@
                     <a href="javascript:void(0);" id="nest-build" class="left-button">Build a Nest</a>
                     <a href="javascript:void(0);" id="nest-join-btn" class="left-button">Join a Nest</a>
                     {% else %}
-                    <div class="nest-info-section">
-                        <span class="nest-name">{{ nest_name }}</span>
-                        <span class="nest-code-badge">{{ nest_code }}</span>
-                        <span class="nest-listener-count"><span id="nest-listener-num">--</span> listening</span>
-                    </div>
                     <a href="javascript:void(0);" id="nest-share" class="left-button">Share Nest</a>
-                    <a href="/" class="left-button">Back to Main Nest</a>
+                    <a href="/" class="left-button">Back to Home Nest</a>
                     {% endif %}
                     <span id="nest-bar-error" class="nest-bar-error"></span>
+                    <div class="nest-info-section nest-listener-section">
+                        {% if is_main_nest %}
+                        <span class="nest-name">EchoNest</span>
+                        <span class="nest-listener-count"><span id="nest-listener-num">--</span> listening across <span id="nest-active-count">--</span> nests</span>
+                        {% else %}
+                        <span class="nest-name">{{ nest_name }}</span>
+                        <span class="nest-listener-count"><span id="nest-listener-num">--</span> listening</span>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>

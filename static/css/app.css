@@ -368,30 +368,26 @@ background-position: center center;
     border-bottom: 1px solid rgba(0, 0, 0, 0.4);
 }
 
+.nest-listener-section {
+    position: relative;
+    border-bottom: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.4);
+    justify-content: center;
+}
+
 .nest-name {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--accent-color);
     white-space: nowrap;
 }
 
-.nest-code-badge {
-    background: rgba(var(--accent-color-rgb), 0.2);
-    border: 1px solid rgba(var(--accent-color-rgb), 0.35);
-    color: var(--accent-color);
-    padding: 3px 10px;
-    font-size: 13px;
-    font-family: 'Circular', monospace;
-    letter-spacing: 2px;
-    border-radius: 3px;
-    white-space: nowrap;
-}
-
 .nest-listener-count {
+    position: absolute;
+    right: 20px;
     font-size: 13px;
     color: rgba(var(--accent-color-rgb), 0.6);
     white-space: nowrap;
-    margin-left: auto;
 }
 
 #nest-listener-num {
@@ -402,6 +398,7 @@ background-position: center center;
 .nest-bar-error {
     display: block;
     padding: 8px 20px;
-    font-size: 13px;
+    font-size: 20px;
     color: #ff4d4d;
+    text-align: center;
 }

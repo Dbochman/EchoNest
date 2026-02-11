@@ -1880,8 +1880,22 @@ window.addEventListener('load', function(){
     $('#nest-join-btn').on('click', nestJoin);
     $('#nest-share').on('click', nestShare);
 
-    // Fetch initial listener count for temporary nests
-    if (!window.IS_MAIN_NEST && window.NEST_CODE) {
+    // Fetch initial listener/nest counts
+    if (window.IS_MAIN_NEST) {
+        fetch('/api/nests', { credentials: 'same-origin' })
+            .then(function(resp) { return resp.ok ? resp.json() : null; })
+            .then(function(data) {
+                if (data && Array.isArray(data.nests)) {
+                    var totalListeners = 0;
+                    data.nests.forEach(function(n) {
+                        totalListeners += (n.member_count || 0);
+                    });
+                    $('#nest-listener-num').text(totalListeners);
+                    $('#nest-active-count').text(data.nests.length);
+                }
+            })
+            .catch(function() {});
+    } else if (window.NEST_CODE) {
         fetch('/api/nests/' + window.NEST_CODE, { credentials: 'same-origin' })
             .then(function(resp) { return resp.ok ? resp.json() : null; })
             .then(function(data) {
