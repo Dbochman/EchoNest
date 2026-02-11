@@ -25,7 +25,7 @@ from flask_assets import Environment, Bundle
 
 from config import CONF
 from db import DB, is_spotify_rate_limited, set_spotify_rate_limit, handle_spotify_exception
-from nests import pubsub_channel, NestManager
+from nests import pubsub_channel, NestManager, refresh_member_ttl, member_key, members_key
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -326,6 +326,78 @@ class MusicNamespace(WebSocketManager):
                 nest_manager.leave_nest(self.nest_id, self.email)
             except Exception:
                 logger.exception('Failed to leave nest %s', self.nest_id)
+        # Delete member TTL key
+        try:
+            mk = member_key(self.nest_id, self.email)
+            self.db._r.delete(mk)
+        except Exception:
+            pass
+        # Remove from MEMBERS set
+        try:
+            mkey = members_key(self.nest_id)
+            self.db._r.srem(mkey, self.email)
+        except Exception:
+            pass
+
+    def serve(self):
+        """Override serve to add membership heartbeat TTL refresh."""
+        import time as _time
+        # Initial heartbeat on connect
+        try:
+            refresh_member_ttl(self.db._r, self.nest_id, self.email, 90)
+        except Exception:
+            logger.exception('Failed initial heartbeat for %s', self.email)
+
+        last_heartbeat = _time.time()
+        try:
+            while True:
+                msg = None
+                with gevent.Timeout(30, False):
+                    msg = self._ws.receive()
+
+                # Refresh heartbeat every 30 seconds
+                now = _time.time()
+                if now - last_heartbeat >= 30:
+                    try:
+                        refresh_member_ttl(self.db._r, self.nest_id, self.email, 90)
+                    except Exception:
+                        logger.exception('Failed heartbeat for %s', self.email)
+                    last_heartbeat = now
+
+                if msg is None:
+                    if getattr(self._ws, 'closed', False):
+                        break
+                    continue
+                if msg == '':
+                    if getattr(self._ws, 'closed', False):
+                        break
+                    continue
+                if isinstance(msg, bytes):
+                    msg = msg.decode('utf-8', 'ignore')
+                T = msg[0]
+                if T == '1':
+                    data = json.loads(msg[1:]) if len(msg) > 1 else None
+                    if not data:
+                        continue
+                    event = data[0]
+                    args = data[1:]
+                    try:
+                        getattr(self, 'on_' + event.replace('-', '_'))(*args)
+                    except Exception:
+                        logger.exception('Socket handler error for event: %s', event)
+                elif T == '0':
+                    pass  # Heartbeat
+                else:
+                    return
+        except Exception:
+            logger.exception('WebSocket error')
+        finally:
+            self._on_disconnect()
+            try:
+                self._ws.close()
+            except Exception:
+                pass
+            gevent.killall(self._children)
 
     def listener(self):
         r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379, password=CONF.REDIS_PASSWORD or None, decode_responses=True).pubsub()
