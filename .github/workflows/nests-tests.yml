@@ -24,4 +24,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run nests tests
+        env:
+          SKIP_SPOTIFY_PREFETCH: "1"
         run: ./scripts/test_nests.sh
