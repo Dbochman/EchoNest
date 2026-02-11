@@ -699,3 +699,53 @@ class TestMembershipHeartbeat:
 
         assert members_key("X7K2P") == "NEST:X7K2P|MEMBERS"
         assert member_key("X7K2P", "user@example.com") == "NEST:X7K2P|MEMBER:user@example.com"
+
+
+@pytest.mark.xfail(reason="Migration helpers not implemented yet")
+class TestMigrationHelpers:
+    def test_legacy_key_rename_map(self):
+        try:
+            nests = importlib.import_module("nests")
+        except Exception as e:
+            pytest.xfail(f"Cannot import nests module: {e}")
+
+        mapping = getattr(nests, "legacy_key_mapping", None)
+        if mapping is None:
+            pytest.xfail("legacy_key_mapping helper missing")
+
+        expected = {
+            "MISC|now-playing": "NEST:main|MISC|now-playing",
+            "MISC|priority-queue": "NEST:main|MISC|priority-queue",
+        }
+        for k, v in expected.items():
+            assert mapping[k] == v
+
+
+@pytest.mark.xfail(reason="Per-nest pubsub channel not implemented yet")
+class TestPubSubChannels:
+    def test_pubsub_channel_key(self):
+        try:
+            nests = importlib.import_module("nests")
+        except Exception as e:
+            pytest.xfail(f"Cannot import nests module: {e}")
+
+        channel = getattr(nests, "pubsub_channel", None)
+        if channel is None:
+            pytest.xfail("pubsub_channel helper missing")
+
+        assert channel("X7K2P") == "NEST:X7K2P|MISC|update-pubsub"
+
+
+@pytest.mark.xfail(reason="Master player multi-nest iteration not implemented yet")
+class TestMasterPlayerMultiNest:
+    def test_master_player_iterates_nests(self):
+        try:
+            mp = importlib.import_module("master_player")
+        except Exception as e:
+            pytest.xfail(f"Cannot import master_player: {e}")
+
+        helper = getattr(mp, "master_player_tick_all", None)
+        if helper is None:
+            pytest.xfail("master_player_tick_all helper missing")
+
+        assert callable(helper)
