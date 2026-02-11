@@ -749,3 +749,88 @@ class TestMasterPlayerMultiNest:
             pytest.xfail("master_player_tick_all helper missing")
 
         assert callable(helper)
+
+
+@pytest.mark.xfail(reason="NestManager CRUD not implemented yet")
+class TestNestManagerCRUD:
+    def test_create_get_list_delete(self):
+        try:
+            nests = importlib.import_module("nests")
+        except Exception as e:
+            pytest.xfail(f"Cannot import nests module: {e}")
+
+        manager_cls = getattr(nests, "NestManager", None)
+        if manager_cls is None:
+            pytest.xfail("NestManager missing")
+
+        try:
+            manager = manager_cls()
+        except Exception as e:
+            pytest.xfail(f"NestManager init failed: {e}")
+
+        nest = manager.create_nest("creator@example.com", name="Friday Vibes")
+        assert "code" in nest
+
+        fetched = manager.get_nest(nest["code"])
+        assert fetched is not None
+
+        nests_list = manager.list_nests()
+        assert isinstance(nests_list, list)
+
+        manager.delete_nest(nest["code"])
+
+
+@pytest.mark.xfail(reason="Migration script not implemented yet")
+class TestMigrationScriptBehavior:
+    def test_migration_script_idempotent(self):
+        try:
+            import migrate_keys
+        except Exception as e:
+            pytest.xfail(f"Cannot import migrate_keys: {e}")
+
+        assert hasattr(migrate_keys, "migrate")
+
+
+@pytest.mark.xfail(reason="Auth gating for nest routes not implemented yet")
+class TestNestAuthGating:
+    @pytest.fixture
+    def client(self):
+        if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
+            pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
+
+        from app import app, CONF
+
+        app.config["TESTING"] = True
+        self._host = str(CONF.HOSTNAME) if CONF.HOSTNAME else "localhost:5000"
+        with app.test_client() as client:
+            yield client
+
+    def _get(self, client, path, **kwargs):
+        headers = kwargs.pop("headers", {})
+        headers["Host"] = self._host
+        return client.get(path, headers=headers, **kwargs)
+
+    def test_api_nests_requires_auth(self, client):
+        rv = self._get(client, "/api/nests")
+        assert rv.status_code in (401, 403, 302)
+
+    def test_nest_page_requires_auth(self, client):
+        rv = self._get(client, "/nest/XXXXX")
+        assert rv.status_code in (401, 403, 302, 404)
+
+
+@pytest.mark.xfail(reason="WebSocket membership tracking not implemented yet")
+class TestWebSocketMembership:
+    def test_membership_join_leave(self):
+        try:
+            nests = importlib.import_module("nests")
+        except Exception as e:
+            pytest.xfail(f"Cannot import nests module: {e}")
+
+        join = getattr(nests, "join_nest", None)
+        leave = getattr(nests, "leave_nest", None)
+        if join is None or leave is None:
+            pytest.xfail("join_nest/leave_nest helpers missing")
+
+        assert callable(join)
+        assert callable(leave)
