@@ -3,6 +3,8 @@
 Decisions made during overnight implementation of the Nests MVP (Phases 1-3).
 Each entry documents what was decided, why, and any alternatives considered.
 
+For async handoffs, use `docs/NESTS_HANDOFF_TEMPLATE.md`.
+
 ---
 
 ## D001: Migration uses DUMP+RESTORE+DEL, not RENAME
