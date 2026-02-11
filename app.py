@@ -25,7 +25,7 @@ from flask_assets import Environment, Bundle
 
 from config import CONF
 from db import DB, is_spotify_rate_limited, set_spotify_rate_limit, handle_spotify_exception
-from nests import pubsub_channel
+from nests import pubsub_channel, NestManager
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -131,6 +131,13 @@ __setup_bundles()
 
 d = DB(False)
 logger.setLevel(logging.DEBUG)
+
+# Initialize NestManager for nest CRUD operations
+try:
+    nest_manager = NestManager()
+except Exception as e:
+    logger.warning("NestManager init failed (nests disabled): %s", e)
+    nest_manager = None
 
 auth = spotipy.oauth2.SpotifyClientCredentials(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET)
 auth.get_access_token()
@@ -1330,3 +1337,115 @@ def api_events():
     resp.headers['Cache-Control'] = 'no-cache'
     resp.headers['X-Accel-Buffering'] = 'no'
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Nests API (token-authenticated, for managing nests)
+# ---------------------------------------------------------------------------
+
+# Reserved words that cannot be used as vanity codes
+_VANITY_RESERVED = frozenset({
+    'api', 'socket', 'login', 'signup', 'static', 'assets',
+    'health', 'status', 'metrics', 'terms', 'privacy',
+    'admin', 'nest', 'nests', 'volume', 'queue', 'playing',
+    'logout', 'guest', 'main',
+})
+
+import re
+_VANITY_RE = re.compile(r'^[a-zA-Z][a-zA-Z0-9-]*$')
+
+
+def _validate_vanity_code(code):
+    """Validate a vanity code. Returns (ok, error_message)."""
+    if not code:
+        return True, None
+    if len(code) < 3:
+        return False, "Vanity code must be at least 3 characters"
+    if len(code) > 24:
+        return False, "Vanity code must be at most 24 characters"
+    if code.lower() in _VANITY_RESERVED:
+        return False, f"'{code}' is a reserved word"
+    if not _VANITY_RE.match(code):
+        return False, "Vanity code must start with a letter and contain only letters, digits, and hyphens"
+    return True, None
+
+
+@app.route('/api/nests', methods=['POST'])
+@require_api_token
+def api_nests_create():
+    if nest_manager is None:
+        return jsonify(error='Nests not available'), 503
+    body = request.get_json(silent=True) or {}
+    name = body.get('name')
+    # Use a default creator email from the API
+    creator = body.get('creator', API_EMAIL)
+    try:
+        nest = nest_manager.create_nest(creator, name=name)
+        return jsonify(nest)
+    except Exception as e:
+        logger.error("Error creating nest: %s", e)
+        return jsonify(error='internal_error', message=str(e)), 500
+
+
+@app.route('/api/nests', methods=['GET'])
+@require_api_token
+def api_nests_list():
+    if nest_manager is None:
+        return jsonify(error='Nests not available'), 503
+    nests_list = nest_manager.list_nests()
+    result = []
+    for nest_id, meta in nests_list:
+        result.append(meta)
+    return jsonify(nests=result)
+
+
+@app.route('/api/nests/<code>', methods=['GET'])
+@require_api_token
+def api_nests_get(code):
+    if nest_manager is None:
+        return jsonify(error='Nests not available'), 503
+    nest = nest_manager.get_nest(code)
+    if nest is None:
+        return jsonify(error='not_found', message='Nest not found.'), 404
+    return jsonify(nest)
+
+
+@app.route('/api/nests/<code>', methods=['PATCH'])
+@require_api_token
+def api_nests_update(code):
+    if nest_manager is None:
+        return jsonify(error='Nests not available'), 503
+    nest = nest_manager.get_nest(code)
+    if nest is None:
+        return jsonify(error='not_found', message='Nest not found.'), 404
+
+    body = request.get_json(silent=True) or {}
+
+    # Validate vanity code if provided
+    vanity_code = body.get('vanity_code')
+    if vanity_code is not None:
+        ok, err_msg = _validate_vanity_code(vanity_code)
+        if not ok:
+            return jsonify(error='invalid_vanity_code', message=err_msg), 400
+
+    # Update name if provided
+    if 'name' in body:
+        nest['name'] = body['name']
+
+    # Store updated metadata
+    nest_manager._r.hset('NESTS|registry', code, json.dumps(nest))
+    return jsonify(nest)
+
+
+@app.route('/api/nests/<code>', methods=['DELETE'])
+@require_api_token
+def api_nests_delete(code):
+    if nest_manager is None:
+        return jsonify(error='Nests not available'), 503
+    nest = nest_manager.get_nest(code)
+    if nest is None:
+        return jsonify(error='not_found', message='Nest not found.'), 404
+    if nest.get('is_main'):
+        return jsonify(error='forbidden', message='Cannot delete the main nest.'), 403
+    nest_manager.delete_nest(code)
+    return jsonify(ok=True)
