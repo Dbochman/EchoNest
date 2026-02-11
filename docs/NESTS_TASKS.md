@@ -103,10 +103,14 @@ These are the test classes that should flip from `xfail` to passing:
   - `should_delete_nest(metadata, members, queue_size, now)` — cleanup predicate
 - `migrate_keys.py` script that:
   - Connects to Redis and renames all existing keys to `NEST:main|` prefix
-  - Uses `SCAN` to find keys matching known prefixes (`MISC|*`, `QUEUE|*`, `FILTER|*`, `BENDER|*`)
-  - Uses `RENAME` for each key
+  - Uses `SCAN` to find keys matching ALL known prefixes:
+    - `MISC|*`, `QUEUE|*`, `FILTER|*`, `BENDER|*`
+    - `QUEUEJAM|*`, `COMMENTS|*`, `FILL-INFO|*`
+    - `AIRHORNS`, `FREEHORN_*`
+  - Uses `DUMP`+`RESTORE`+`DEL` (copy-then-delete) instead of `RENAME` — safe if destination already exists (won't clobber)
   - Idempotent: skip keys that already have `NEST:` prefix
   - Dry-run mode flag
+  - **Safety:** If `NEST:main|{key}` already exists, log a warning and skip (don't overwrite)
 **Commit:** `feat(nests): add nests helpers module and key migration script`
 **Verify:**
 - `SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py::TestMigrationHelpers -v`
@@ -167,11 +171,11 @@ These are the test classes that should flip from `xfail` to passing:
 **Changes:**
 - Import `NestManager`, instantiate alongside DB
 - `POST /api/nests` — create nest (requires authenticated session or API token)
-- `GET /api/nests` — list active nests
-- `GET /api/nests/<code>` — get nest info
+- `GET /api/nests` — list active nests (**authenticated only** — don't leak nest list to anonymous users)
+- `GET /api/nests/<code>` — get nest info (**authenticated only**)
 - `PATCH /api/nests/<code>` — update nest (creator only)
 - `DELETE /api/nests/<code>` — delete nest (creator only)
-- Add `/api/nests` to `SAFE_PARAM_PATHS` (token auth or session auth)
+- **Auth:** These routes use session auth (standard `before_request` gate) OR `@require_api_token` for API clients. Do NOT add `/api/nests` to `SAFE_PARAM_PATHS` — that would bypass session auth and make them public
 - Return proper JSON responses with status codes
 **Commit:** `feat(nests): add REST API routes for nest CRUD`
 **Verify:** `SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py::TestNestsAPI -v`
@@ -190,7 +194,7 @@ These are the test classes that should flip from `xfail` to passing:
 **Commit:** `feat(nests): add /nest/<code> page route`
 **Verify:** Part of `TestNestsAPI` tests
 
-### T9: WebSocket nest routing
+### T9: WebSocket nest routing + membership heartbeat
 **File:** `app.py`
 **Changes:**
 - Modify `before_request` WebSocket handling to extract nest_id from path:
@@ -201,8 +205,14 @@ These are the test classes that should flip from `xfail` to passing:
 - On connect: `nest_manager.join_nest(nest_id, email)`
 - On disconnect (in `serve()` finally block): `nest_manager.leave_nest(nest_id, email)`
 - Update `nest_manager.touch_nest(nest_id)` on queue operations
-**Commit:** `feat(nests): route WebSocket connections to specific nests`
-**Verify:** Hard to test via pytest (WebSocket mocking). Verify manually if possible.
+- **Heartbeat TTL:** Use per-member keys with TTL to handle stale members:
+  - On connect and periodically (every 30s in `serve()` loop): `SET NEST:{id}|MEMBER:{email} 1 EX 90`
+  - Use `member_key(nest_id, email)` from `nests.py` for key format
+  - The MEMBERS set tracks who's in the nest; the MEMBER:{email} TTL keys track liveness
+  - `should_delete_nest()` in cleanup should check MEMBER TTL keys, not just the MEMBERS set — if all member keys are expired, the set is stale
+  - On disconnect: delete the member key AND SREM from MEMBERS set
+**Commit:** `feat(nests): route WebSocket connections to specific nests with heartbeat`
+**Verify:** Hard to test via pytest (WebSocket mocking). Verify manually if possible. `TestMembershipHeartbeat` tests the key format helpers.
 
 ### T10: Add nest cleanup to master_player
 **Files:** `master_player.py`, `db.py`
@@ -213,6 +223,8 @@ These are the test classes that should flip from `xfail` to passing:
 - Add `nest_cleanup_loop()` that runs alongside master_player
 - Cleanup uses `should_delete_nest()` from `nests.py` module
 - Skip main nest
+- **IMPORTANT: Global keys stay global.** `MISC|spotify-rate-limited` is checked in module-level functions (not on DB class) and must NOT be nest-scoped. Verify T2 didn't wrap it. The rate limit is a Spotify API concern shared across all nests.
+- **Auth refresh storms:** When iterating nests, reuse the same Spotify client/token across nests in a single tick cycle rather than refreshing per-nest
 **Commit:** `feat(nests): add multi-nest master player and cleanup worker`
 **Verify:**
 - `SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py::TestNestCleanupLogic -v`
@@ -317,8 +329,9 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 
 ## Risk Areas (pay extra attention)
 
-1. **db.py refactor (T2)** — Most error-prone task. Every Redis key must be wrapped. Missing one means silent data corruption (writing to wrong key). Be exhaustive.
+1. **db.py refactor (T2)** — Most error-prone task. Every Redis key must be wrapped. Missing one means silent data corruption (writing to wrong key). Be exhaustive. The complete list of key prefixes in db.py: `MISC|*`, `QUEUE|*`, `QUEUE|VOTE|*`, `FILTER|*`, `BENDER|*`, `QUEUEJAM|*`, `COMMENTS|*`, `FILL-INFO|*`, `AIRHORNS`, `FREEHORN_*`.
 2. **pub/sub channel scoping (T4)** — If the channel name doesn't match between publisher (db.py) and subscriber (app.py), real-time updates break silently.
-3. **WebSocket disconnect handling (T9)** — Must reliably call `leave_nest` even on abnormal disconnects. The `finally` block in `serve()` is the right place.
-4. **master_player multi-nest (T10)** — The lock mechanism (`MISC|master-player` via `setnx`) needs to be per-nest: `NEST:{id}|MISC|master-player`.
+3. **WebSocket disconnect handling (T9)** — Must reliably call `leave_nest` even on abnormal disconnects. The `finally` block in `serve()` is the right place. Must also refresh heartbeat TTL key periodically to prevent stale members blocking cleanup.
+4. **master_player multi-nest (T10)** — The lock mechanism (`MISC|master-player` via `setnx`) needs to be per-nest: `NEST:{id}|MISC|master-player`. Keep `MISC|spotify-rate-limited` global (not nest-scoped).
 5. **nests.py module name (T3)** — Tests import `nests` module via `importlib.import_module("nests")`. The file MUST be named `nests.py` at the project root, not `nest_manager.py`. Either name the file `nests.py` or ensure `nest_manager.py` exports the expected helpers AND update the import in tests. **Recommended:** Create `nests.py` with the helper functions and keep `nest_manager.py` for the NestManager class, OR put everything in `nests.py`.
+6. **Migration safety (T3)** — Use `DUMP`+`RESTORE`+`DEL` (not `RENAME`) to avoid clobbering if destination key already exists from a partial migration. Skip with warning if destination exists. Cover ALL 9 prefix families, not just the 4 main ones.
