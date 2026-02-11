@@ -27,6 +27,10 @@ SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py::TestRedisKeyPrefix
 | `TestNestCleanupLogic` | `test/test_nests.py:662` | T10 | 2 |
 | `TestMembershipHeartbeat` | `test/test_nests.py:688` | T6, T9 | 2 |
 | `TestMasterPlayerMultiNest` | `test/test_nests.py:740` | T10 | 2 |
+| `TestNestManagerCRUD` | `test/test_nests.py:760` | T6 | 2 |
+| `TestMigrationScriptBehavior` | `test/test_nests.py:789` | T3 | 1 |
+| `TestNestAuthGating` | `test/test_nests.py:807` | T7, T8 | 2 |
+| `TestWebSocketMembership` | `test/test_nests.py:841` | T9 | 2 |
 | `TestNestsAPI` | `test/test_nests.py:16` | T7, T8 | 2 |
 | `TestNestsAdminAPI` | `test/test_nests.py:241` | Phase 5 (future) |
 | `TestBillingAPI` | `test/test_nests.py:333` | Phase 5 (future) |
@@ -46,7 +50,11 @@ These are the test classes that should flip from `xfail` to passing:
 4. **`TestNestCleanupLogic`** — `should_delete_nest()` predicate logic
 5. **`TestMembershipHeartbeat`** — `member_key()` and `members_key()` helpers
 6. **`TestMasterPlayerMultiNest`** — `master_player_tick_all()` callable exists
-7. **`TestNestsAPI`** — CRUD routes return correct status codes and shapes
+7. **`TestNestManagerCRUD`** — basic CRUD wiring exists
+8. **`TestMigrationScriptBehavior`** — migration entrypoint exists
+9. **`TestNestAuthGating`** — nest routes require auth
+10. **`TestWebSocketMembership`** — membership helpers wired
+11. **`TestNestsAPI`** — CRUD routes return correct status codes and shapes
 
 ### Future Tests (should remain xfail for now)
 
@@ -102,6 +110,7 @@ These are the test classes that should flip from `xfail` to passing:
   - `member_key(nest_id, email)` — returns `f"NEST:{nest_id}|MEMBER:{email}"`
   - `refresh_member_ttl(nest_id, email, ttl_seconds=90)` — sets member TTL key
   - `should_delete_nest(metadata, members, queue_size, now)` — cleanup predicate
+  - `NestManager` should be importable from `nests.py` (tests import `nests.NestManager`)
 - `migrate_keys.py` script that:
   - Connects to Redis and renames all existing keys to `NEST:main|` prefix
   - Uses `SCAN` to find keys matching ALL known prefixes:
@@ -112,6 +121,7 @@ These are the test classes that should flip from `xfail` to passing:
   - Idempotent: skip keys that already have `NEST:` prefix
   - Dry-run mode flag
   - **Safety:** If `NEST:main|{key}` already exists, log a warning and skip (don't overwrite)
+  - Provide a `migrate()` function in `migrate_keys.py` (tests check for it)
 **Commit:** `feat(nests): add nests helpers module and key migration script`
 **Verify:**
 - `SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py::TestMigrationHelpers -v`
