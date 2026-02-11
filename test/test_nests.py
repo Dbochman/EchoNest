@@ -1111,3 +1111,13 @@ class TestRaceResistantDeletion:
 
         # Nest should not be in registry
         assert manager.get_nest(nid) is None
+
+    def test_guard_blocks_nuke_queue(self, fake_redis):
+        from db import DB
+        from nests import deleting_key
+
+        db = DB(nest_id="doomed", init_history_to_redis=False, redis_client=fake_redis)
+        fake_redis.setex(deleting_key("doomed"), 30, "1")
+
+        with pytest.raises(RuntimeError, match="being deleted"):
+            db.nuke_queue("user@example.com")
