@@ -5,6 +5,8 @@ import os
 import sys
 
 import pytest
+import datetime
+import importlib
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -633,3 +635,67 @@ class TestFreeCap:
         if rv.status_code in (403, 429):
             data = rv.get_json()
             assert data.get("error") == "nest_limit_reached"
+
+
+@pytest.mark.xfail(reason="Redis key prefixing not implemented yet")
+class TestRedisKeyPrefixing:
+    def test_db_key_prefixing(self):
+        try:
+            from db import DB
+        except Exception as e:
+            pytest.xfail(f"Cannot import DB: {e}")
+
+        try:
+            db = DB(nest_id="X7K2P", init_history_to_redis=False)
+        except TypeError:
+            pytest.xfail("DB does not accept nest_id yet")
+        except Exception as e:
+            pytest.xfail(f"DB init failed: {e}")
+
+        if not hasattr(db, "_key"):
+            pytest.xfail("DB._key missing")
+
+        assert db._key("MISC|now-playing") == "NEST:X7K2P|MISC|now-playing"
+
+
+@pytest.mark.xfail(reason="Nest cleanup logic not implemented yet")
+class TestNestCleanupLogic:
+    def test_should_delete_nest_predicate(self):
+        try:
+            nests = importlib.import_module("nests")
+        except Exception as e:
+            pytest.xfail(f"Cannot import nests module: {e}")
+
+        helper = getattr(nests, "should_delete_nest", None)
+        if helper is None:
+            pytest.xfail("should_delete_nest helper missing")
+
+        now = datetime.datetime(2026, 2, 11, 12, 0, 0)
+        metadata = {
+            "is_main": False,
+            "last_activity": "2026-02-11T09:00:00",
+            "ttl_minutes": 120,
+        }
+        assert helper(metadata, members=0, queue_size=0, now=now) is True
+        assert helper(metadata, members=1, queue_size=0, now=now) is False
+        assert helper(metadata, members=0, queue_size=1, now=now) is False
+
+        metadata["is_main"] = True
+        assert helper(metadata, members=0, queue_size=0, now=now) is False
+
+
+@pytest.mark.xfail(reason="Membership heartbeat helpers not implemented yet")
+class TestMembershipHeartbeat:
+    def test_member_key_helpers(self):
+        try:
+            nests = importlib.import_module("nests")
+        except Exception as e:
+            pytest.xfail(f"Cannot import nests module: {e}")
+
+        member_key = getattr(nests, "member_key", None)
+        members_key = getattr(nests, "members_key", None)
+        if member_key is None or members_key is None:
+            pytest.xfail("member_key/members_key helpers missing")
+
+        assert members_key("X7K2P") == "NEST:X7K2P|MEMBERS"
+        assert member_key("X7K2P", "user@example.com") == "NEST:X7K2P|MEMBER:user@example.com"
