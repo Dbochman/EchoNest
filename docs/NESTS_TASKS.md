@@ -265,20 +265,27 @@ These are the test classes that should flip from `xfail` to passing, grouped by 
 ### T10: Add nest cleanup to master_player
 **Files:** `master_player.py`, `db.py`
 **Changes:**
-- Refactor `master_player()` loop to iterate over all active nests
-- Extract single-iteration logic into `_master_player_tick()` method
-- Add `master_player_tick_all()` function (the test expects this to be callable)
-- Add `nest_cleanup_loop()` that runs alongside master_player
+- **Strategy:** Dedicated supervisor + per‑nest worker greenlets that run bounded ticks (not infinite loops).
+- Extract single-iteration logic into `DB._master_player_tick()` (one nest, one cycle)
+- Implement `_run_nest_player(nest_id)` as a loop:
+  - `db = DB(nest_id=nest_id)` once
+  - `while True: db._master_player_tick(); gevent.sleep(0.25–1.0)`
+- `master_player_tick_all()` becomes the **supervisor**:
+  - Poll `list_nests()` every few seconds
+  - Spawn a worker greenlet per new nest (including `main`)
+  - Kill workers for removed nests
+  - Respawn workers that die (log exception)
+- Add `nest_cleanup_loop()` that runs alongside the supervisor
 - Cleanup uses `should_delete_nest()` from `nests.py` module
 - Skip main nest
 - **IMPORTANT: Global keys stay global.** `MISC|spotify-rate-limited` is checked in module-level functions (not on DB class) and must NOT be nest-scoped. Verify T2 didn't wrap it. The rate limit is a Spotify API concern shared across all nests.
-- **Auth refresh storms:** When iterating nests, reuse the same Spotify client/token across nests in a single tick cycle rather than refreshing per-nest
+- **Spotify overhead control:** Keep OAuth refresh/token cache global or shared so per‑nest workers do not all refresh at once.
 **Commit:** `feat(nests): add multi-nest master player and cleanup worker`
 **Verify:**
 - `SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py::TestNestCleanupLogic -v`
 - `SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py::TestMasterPlayerMultiNest -v`
   - `test_master_player_iterates_nests` — asserts `master_player_tick_all` is callable
-**Done when:** `master_player_tick_all()` exists and cleanup deletes only inactive empty nests.
+**Done when:** supervisor spawns/cleans per‑nest workers, `_master_player_tick()` runs per nest, and cleanup deletes only inactive empty nests.
 
 ---
 
