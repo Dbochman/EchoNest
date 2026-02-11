@@ -11,6 +11,8 @@ import random
 
 import redis
 
+from config import CONF
+
 logger = logging.getLogger(__name__)
 
 # Character set for nest codes: unambiguous uppercase + digits (no 0/O/1/I/L)
@@ -144,7 +146,7 @@ def should_delete_nest(metadata, members, queue_size, now):
 
     # Check inactivity timeout
     last_activity_str = metadata.get("last_activity")
-    ttl_minutes = metadata.get("ttl_minutes", 5)
+    ttl_minutes = metadata.get("ttl_minutes", getattr(CONF, 'NEST_MAX_INACTIVE_MINUTES', 5))
 
     if last_activity_str:
         last_activity = datetime.datetime.fromisoformat(last_activity_str)
@@ -239,7 +241,7 @@ class NestManager:
             'is_main': False,
             'created_at': now,
             'last_activity': now,
-            'ttl_minutes': 5,
+            'ttl_minutes': getattr(CONF, 'NEST_MAX_INACTIVE_MINUTES', 5),
         }
 
         # Store in registry hash (nest_id -> JSON metadata)

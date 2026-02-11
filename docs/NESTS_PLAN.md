@@ -96,7 +96,7 @@ Each nest's metadata:
   "created_by": "dylan@example.com",
   "created_at": "2026-02-10T15:30:00",
   "last_activity": "2026-02-10T16:45:00",
-  "ttl_minutes": 10,
+  "ttl_minutes": 5,
   "is_main": false
 }
 ```
@@ -424,7 +424,7 @@ New config options:
 ```yaml
 # Nests
 NESTS_ENABLED: true
-NEST_MAX_INACTIVE_MINUTES: 10     # Auto-delete after 10 minutes of inactivity
+NEST_MAX_INACTIVE_MINUTES: 5      # Auto-delete after 5 minutes of inactivity
 NEST_MAX_ACTIVE: 20               # Max concurrent nests (prevents resource abuse)
 NEST_CODE_LENGTH: 5               # Characters in nest code
 NEST_BENDER_DEFAULT: true         # Whether Bender runs in new nests by default
