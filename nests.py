@@ -6,10 +6,15 @@ tracking, and cleanup logic, plus the NestManager class for CRUD operations.
 import datetime
 import json
 import logging
+import os
 import random
-import string
+
+import redis
 
 logger = logging.getLogger(__name__)
+
+# Character set for nest codes: unambiguous uppercase + digits (no 0/O/1/I/L)
+CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 
 
 # ---------------------------------------------------------------------------
@@ -115,47 +120,215 @@ def should_delete_nest(metadata, members, queue_size, now):
 
 
 # ---------------------------------------------------------------------------
-# Module-level join/leave wrappers (delegate to default NestManager in T6)
+# NestManager class
+# ---------------------------------------------------------------------------
+
+# Global registry key (NOT nest-scoped)
+_REGISTRY_KEY = 'NESTS|registry'
+
+
+def _code_key(code):
+    """Return the Redis key for a nest code lookup (global, NOT nest-scoped)."""
+    return f'NESTS|code:{code}'
+
+
+class NestManager:
+    """Manages nest lifecycle: create, read, update, delete.
+
+    Uses Redis hash at NESTS|registry for nest metadata and
+    NESTS|code:{code} for code-to-nest_id lookup.
+    """
+
+    def __init__(self, redis_client=None):
+        if redis_client is not None:
+            self._r = redis_client
+        else:
+            redis_host = os.environ.get('REDIS_HOST', 'localhost')
+            redis_port = int(os.environ.get('REDIS_PORT', 6379))
+            redis_password = os.environ.get('REDIS_PASSWORD') or None
+            self._r = redis.StrictRedis(
+                host=redis_host, port=redis_port,
+                password=redis_password, decode_responses=True
+            )
+        # Ensure main nest exists in registry
+        self._ensure_main_nest()
+
+    def _ensure_main_nest(self):
+        """Initialize the main nest in the registry if not present."""
+        existing = self._r.hget(_REGISTRY_KEY, 'main')
+        if not existing:
+            metadata = {
+                'nest_id': 'main',
+                'code': 'main',
+                'name': 'Main Nest',
+                'creator': 'system',
+                'is_main': True,
+                'created_at': datetime.datetime.now().isoformat(),
+                'last_activity': datetime.datetime.now().isoformat(),
+                'ttl_minutes': 0,  # Never expires
+            }
+            self._r.hset(_REGISTRY_KEY, 'main', json.dumps(metadata))
+
+    def generate_code(self, length=5):
+        """Generate a unique 5-character nest code.
+
+        Uses CODE_CHARS (unambiguous chars) and checks for collisions.
+        """
+        for _ in range(100):  # Max attempts to avoid infinite loop
+            code = ''.join(random.choice(CODE_CHARS) for _ in range(length))
+            # Check if code is already in use
+            if not self._r.exists(_code_key(code)):
+                return code
+        raise RuntimeError("Could not generate unique nest code after 100 attempts")
+
+    def create_nest(self, creator_email, name=None):
+        """Create a new nest.
+
+        Args:
+            creator_email: Email of the creator
+            name: Optional name for the nest
+
+        Returns:
+            dict with nest metadata including 'code'
+        """
+        code = self.generate_code()
+        nest_id = code  # Use code as nest_id for simplicity
+
+        now = datetime.datetime.now().isoformat()
+        metadata = {
+            'nest_id': nest_id,
+            'code': code,
+            'name': name or f'Nest {code}',
+            'creator': creator_email,
+            'is_main': False,
+            'created_at': now,
+            'last_activity': now,
+            'ttl_minutes': 120,
+        }
+
+        # Store in registry hash (nest_id -> JSON metadata)
+        self._r.hset(_REGISTRY_KEY, nest_id, json.dumps(metadata))
+        # Store code lookup (code -> nest_id)
+        self._r.set(_code_key(code), nest_id)
+
+        return metadata
+
+    def get_nest(self, nest_id):
+        """Get nest metadata by nest_id (which is also the code).
+
+        Returns dict or None if not found.
+        """
+        raw = self._r.hget(_REGISTRY_KEY, nest_id)
+        if raw:
+            return json.loads(raw)
+
+        # Try looking up by code
+        looked_up_id = self._r.get(_code_key(nest_id))
+        if looked_up_id:
+            raw = self._r.hget(_REGISTRY_KEY, looked_up_id)
+            if raw:
+                return json.loads(raw)
+
+        return None
+
+    def list_nests(self):
+        """List all registered nests.
+
+        Returns list of (nest_id, metadata_dict) tuples.
+        """
+        all_data = self._r.hgetall(_REGISTRY_KEY)
+        result = []
+        for nest_id, raw_meta in all_data.items():
+            try:
+                meta = json.loads(raw_meta)
+                # Add member count
+                mkey = members_key(nest_id)
+                meta['member_count'] = self._r.scard(mkey)
+                result.append((nest_id, meta))
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Invalid metadata for nest %s", nest_id)
+                continue
+        return result
+
+    def delete_nest(self, nest_id):
+        """Delete a nest and all its Redis keys.
+
+        Args:
+            nest_id: The nest to delete
+        """
+        # Get metadata to find the code
+        raw = self._r.hget(_REGISTRY_KEY, nest_id)
+        if raw:
+            try:
+                meta = json.loads(raw)
+                code = meta.get('code', nest_id)
+                self._r.delete(_code_key(code))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Remove from registry
+        self._r.hdel(_REGISTRY_KEY, nest_id)
+
+        # SCAN and delete all NEST:{nest_id}|* keys
+        prefix = _nest_prefix(nest_id)
+        cursor = 0
+        while True:
+            cursor, keys = self._r.scan(cursor, match=f"{prefix}*", count=200)
+            if keys:
+                self._r.delete(*keys)
+            if cursor == 0:
+                break
+
+    def touch_nest(self, nest_id):
+        """Update the last_activity timestamp for a nest."""
+        raw = self._r.hget(_REGISTRY_KEY, nest_id)
+        if raw:
+            try:
+                meta = json.loads(raw)
+                meta['last_activity'] = datetime.datetime.now().isoformat()
+                self._r.hset(_REGISTRY_KEY, nest_id, json.dumps(meta))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    def join_nest(self, nest_id, email):
+        """Add a member to a nest's MEMBERS set."""
+        mkey = members_key(nest_id)
+        self._r.sadd(mkey, email)
+        self.touch_nest(nest_id)
+
+    def leave_nest(self, nest_id, email):
+        """Remove a member from a nest's MEMBERS set and delete TTL key."""
+        mkey = members_key(nest_id)
+        self._r.srem(mkey, email)
+        # Also delete the member TTL key
+        mk = member_key(nest_id, email)
+        self._r.delete(mk)
+
+
+# ---------------------------------------------------------------------------
+# Default NestManager instance (lazy-initialized)
+# ---------------------------------------------------------------------------
+
+_default_manager = None
+
+
+def _get_default_manager():
+    """Get or create the default NestManager instance."""
+    global _default_manager
+    if _default_manager is None:
+        _default_manager = NestManager()
+    return _default_manager
+
+
+# ---------------------------------------------------------------------------
+# Module-level join/leave wrappers
 # ---------------------------------------------------------------------------
 
 def join_nest(nest_id, email):
     """Add a member to a nest. Delegates to default NestManager."""
-    raise NotImplementedError
+    return _get_default_manager().join_nest(nest_id, email)
 
 
 def leave_nest(nest_id, email):
     """Remove a member from a nest. Delegates to default NestManager."""
-    raise NotImplementedError
-
-
-# ---------------------------------------------------------------------------
-# NestManager class (stub until T6)
-# ---------------------------------------------------------------------------
-
-class NestManager:
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def create_nest(self, creator_email, name=None):
-        raise NotImplementedError
-
-    def get_nest(self, nest_id):
-        raise NotImplementedError
-
-    def list_nests(self):
-        raise NotImplementedError
-
-    def delete_nest(self, nest_id):
-        raise NotImplementedError
-
-    def touch_nest(self, nest_id):
-        raise NotImplementedError
-
-    def join_nest(self, nest_id, email):
-        raise NotImplementedError
-
-    def leave_nest(self, nest_id, email):
-        raise NotImplementedError
-
-    def generate_code(self):
-        raise NotImplementedError
+    return _get_default_manager().leave_nest(nest_id, email)
