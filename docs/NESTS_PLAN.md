@@ -32,6 +32,7 @@ The current single-queue experience becomes the persistent **Main Nest** (lobby)
 4. Friends enter code or visit link → join the Nest
 5. Nest has its own queue, voting, jams, Bender, now-playing — fully independent
 6. Nest auto-deletes after configurable period of inactivity (no listeners + empty queue)
+   - **Note:** With the 10-minute TTL, temporary nests will disappear quickly if everyone leaves; keep a tab open if you plan to return.
 
 ### Domain Setup
 
@@ -95,7 +96,7 @@ Each nest's metadata:
   "created_by": "dylan@example.com",
   "created_at": "2026-02-10T15:30:00",
   "last_activity": "2026-02-10T16:45:00",
-  "ttl_minutes": 120,
+  "ttl_minutes": 10,
   "is_main": false
 }
 ```
