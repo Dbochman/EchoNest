@@ -769,6 +769,18 @@ def main():
     return render_template('main.html')
 
 
+@app.route('/nest/<code>')
+def nest_page(code):
+    """Render the main page scoped to a specific nest."""
+    if nest_manager is None:
+        return 'Nests not available', 503
+    nest = nest_manager.get_nest(code)
+    if nest is None:
+        return 'Nest not found', 404
+    return render_template('main.html', nest_id=nest.get('nest_id', code),
+                           nest_code=code, nest_name=nest.get('name', ''))
+
+
 @app.route('/socket/')
 def socket():
     # WebSocket connections are handled in before_request hook
