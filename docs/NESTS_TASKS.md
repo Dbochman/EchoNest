@@ -100,6 +100,7 @@ These are the test classes that should flip from `xfail` to passing:
   - `pubsub_channel(nest_id)` — returns `f"NEST:{nest_id}|MISC|update-pubsub"`
   - `members_key(nest_id)` — returns `f"NEST:{nest_id}|MEMBERS"`
   - `member_key(nest_id, email)` — returns `f"NEST:{nest_id}|MEMBER:{email}"`
+  - `refresh_member_ttl(nest_id, email, ttl_seconds=90)` — sets member TTL key
   - `should_delete_nest(metadata, members, queue_size, now)` — cleanup predicate
 - `migrate_keys.py` script that:
   - Connects to Redis and renames all existing keys to `NEST:main|` prefix
