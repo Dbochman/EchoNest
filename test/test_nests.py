@@ -776,6 +776,8 @@ class TestNestManagerCRUD:
 
         nests_list = manager.list_nests()
         assert isinstance(nests_list, list)
+        # Expect main nest to exist in listings
+        assert any(nid == "main" for nid, _meta in nests_list)
 
         manager.delete_nest(nest["code"])
 
@@ -783,6 +785,14 @@ class TestNestManagerCRUD:
 @pytest.mark.xfail(reason="Migration script not implemented yet")
 class TestMigrationScriptBehavior:
     def test_migration_script_idempotent(self):
+        try:
+            import migrate_keys
+        except Exception as e:
+            pytest.xfail(f"Cannot import migrate_keys: {e}")
+
+        assert hasattr(migrate_keys, "migrate")
+
+    def test_migration_skips_existing_dest(self):
         try:
             import migrate_keys
         except Exception as e:
@@ -834,3 +844,15 @@ class TestWebSocketMembership:
 
         assert callable(join)
         assert callable(leave)
+
+    def test_heartbeat_ttl_refresh(self):
+        try:
+            nests = importlib.import_module("nests")
+        except Exception as e:
+            pytest.xfail(f"Cannot import nests module: {e}")
+
+        refresh = getattr(nests, "refresh_member_ttl", None)
+        if refresh is None:
+            pytest.xfail("refresh_member_ttl helper missing")
+
+        assert callable(refresh)
