@@ -7,6 +7,28 @@
     window.IS_MAIN_NEST = {{ is_main_nest|tojson }};
 </script>
 <div id="page-container">
+    <div id="nest-bar">
+        {% if is_main_nest %}
+        <div class="nest-bar-main">
+            <button id="nest-build" class="nest-btn">Build a Nest</button>
+            <span class="nest-bar-divider"></span>
+            <form id="nest-join-form" class="nest-join-form">
+                <input type="text" id="nest-join-code" class="nest-join-input" maxlength="5" placeholder="CODE" autocomplete="off" spellcheck="false">
+                <button type="submit" class="nest-btn nest-btn-sm">Join</button>
+            </form>
+            <span id="nest-bar-error" class="nest-bar-error"></span>
+        </div>
+        {% else %}
+        <div class="nest-bar-temp">
+            <span class="nest-name">{{ nest_name }}</span>
+            <span class="nest-code-badge">{{ nest_code }}</span>
+            <button id="nest-share" class="nest-btn nest-btn-sm">Share Nest</button>
+            <span class="nest-listener-count"><span id="nest-listener-num">--</span> listening</span>
+            <a href="/" class="nest-back-link">Back to Main Nest</a>
+            <span id="nest-bar-error" class="nest-bar-error"></span>
+        </div>
+        {% endif %}
+    </div>
     <div id="body">
         <div id="left">
             <div id="progress-wrapper">
