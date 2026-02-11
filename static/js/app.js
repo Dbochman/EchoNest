@@ -1713,6 +1713,79 @@ function refresh_airhorns() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Nest Bar interactions
+// ---------------------------------------------------------------------------
+
+function nestShowError(msg) {
+    var $err = $('#nest-bar-error');
+    $err.text(msg);
+    setTimeout(function() { $err.text(''); }, 5000);
+}
+
+function nestBuild() {
+    var name = prompt('Name your Nest (or leave blank):');
+    if (name === null) return; // user cancelled
+    var body = {};
+    if (name && name.trim()) {
+        body.name = name.trim();
+    }
+    fetch('/api/nests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body)
+    }).then(function(resp) {
+        if (!resp.ok) {
+            return resp.json().then(function(data) {
+                throw new Error(data.message || data.error || 'Failed to create nest');
+            });
+        }
+        return resp.json();
+    }).then(function(data) {
+        if (data.code) {
+            window.location.href = '/nest/' + data.code;
+        }
+    }).catch(function(err) {
+        nestShowError(err.message || 'Failed to create nest');
+    });
+}
+
+function nestJoin(ev) {
+    if (ev) ev.preventDefault();
+    var code = ($('#nest-join-code').val() || '').trim().toUpperCase();
+    if (!code || code.length !== 5) {
+        nestShowError('Enter a 5-character code');
+        return;
+    }
+    window.location.href = '/nest/' + code;
+}
+
+function nestShare() {
+    var code = window.NEST_CODE;
+    if (!code) return;
+    var url = window.location.origin + '/nest/' + code;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function() {
+            nestShowError(''); // clear any previous error
+            var $btn = $('#nest-share');
+            var orig = $btn.text();
+            $btn.text('Copied!');
+            setTimeout(function() { $btn.text(orig); }, 2000);
+        }).catch(function() {
+            nestShowError('Failed to copy link');
+        });
+    } else {
+        // Fallback: select and copy from a temporary input
+        var tmp = document.createElement('input');
+        tmp.value = url;
+        document.body.appendChild(tmp);
+        tmp.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(tmp);
+    }
+}
+
 window.addEventListener('load', function(){
     window_resize();
     var $hover_menu = $('#hover-menu');
@@ -1789,6 +1862,11 @@ window.addEventListener('load', function(){
     // Setup comment handling.
     addCommentsClickHandlers();
     addCommentInputKeyPressHandler();
+
+    // Nest bar event handlers
+    $('#nest-build').on('click', nestBuild);
+    $('#nest-join-form').on('submit', nestJoin);
+    $('#nest-share').on('click', nestShare);
 
     socket.emit('fetch_playlist');
     socket.emit('fetch_now_playing');

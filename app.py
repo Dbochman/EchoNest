@@ -1236,6 +1236,31 @@ def require_api_token(f):
     return decorated
 
 
+def require_session_or_api_token(f):
+    """Allow access via session auth (browser) OR API token (programmatic).
+    Sets g.auth_email to the authenticated user's email."""
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        from flask import g
+        # Check session auth first (browser users)
+        email = _get_authenticated_email()
+        if email:
+            g.auth_email = email
+            return f(*args, **kwargs)
+        # Fall back to API token auth
+        configured_token = CONF.ANDRE_API_TOKEN
+        auth_header = request.headers.get('Authorization', '')
+        if configured_token and auth_header.startswith('Bearer '):
+            provided_token = auth_header[7:]
+            if secrets.compare_digest(provided_token, configured_token):
+                g.auth_email = API_EMAIL
+                return f(*args, **kwargs)
+        resp = jsonify(error='Authentication required')
+        resp.status_code = 401
+        return resp
+    return decorated
+
+
 @app.route('/api/queue/remove', methods=['POST'])
 @require_api_token
 def api_queue_remove():
@@ -1499,14 +1524,14 @@ def _validate_vanity_code(code):
 
 
 @app.route('/api/nests', methods=['POST'])
-@require_api_token
+@require_session_or_api_token
 def api_nests_create():
+    from flask import g
     if nest_manager is None:
         return jsonify(error='Nests not available'), 503
     body = request.get_json(silent=True) or {}
     name = body.get('name')
-    # Use a default creator email from the API
-    creator = body.get('creator', API_EMAIL)
+    creator = g.auth_email
     try:
         nest = nest_manager.create_nest(creator, name=name)
         return jsonify(nest)
@@ -1516,7 +1541,7 @@ def api_nests_create():
 
 
 @app.route('/api/nests', methods=['GET'])
-@require_api_token
+@require_session_or_api_token
 def api_nests_list():
     if nest_manager is None:
         return jsonify(error='Nests not available'), 503
@@ -1528,18 +1553,24 @@ def api_nests_list():
 
 
 @app.route('/api/nests/<code>', methods=['GET'])
-@require_api_token
+@require_session_or_api_token
 def api_nests_get(code):
     if nest_manager is None:
         return jsonify(error='Nests not available'), 503
     nest = nest_manager.get_nest(code)
     if nest is None:
         return jsonify(error='not_found', message='Nest not found.'), 404
+    # Include member count for frontend display
+    mkey = members_key(code)
+    try:
+        nest['member_count'] = nest_manager._r.scard(mkey)
+    except Exception:
+        nest['member_count'] = 0
     return jsonify(nest)
 
 
 @app.route('/api/nests/<code>', methods=['PATCH'])
-@require_api_token
+@require_session_or_api_token
 def api_nests_update(code):
     if nest_manager is None:
         return jsonify(error='Nests not available'), 503
@@ -1566,7 +1597,7 @@ def api_nests_update(code):
 
 
 @app.route('/api/nests/<code>', methods=['DELETE'])
-@require_api_token
+@require_session_or_api_token
 def api_nests_delete(code):
     if nest_manager is None:
         return jsonify(error='Nests not available'), 503
