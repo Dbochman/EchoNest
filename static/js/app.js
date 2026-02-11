@@ -839,7 +839,8 @@ socket.on('player_position', function(src, track, pos){
         return; // don't update
     }
     
-    $('#playing-progress').css('width', Math.floor(400*pos/current_duration));
+    var progressW = $('#progress-wrapper').width() || $('#left').outerWidth();
+    $('#playing-progress').css('width', Math.floor(progressW*pos/current_duration));
     $('#progress-wrapper').attr('title', seconds_to_time(pos)+"/"+seconds_to_time(current_duration))
 
     // update the time remaining; this will cause ETAs to be updated for the queue
@@ -1552,10 +1553,8 @@ function confirm_airhorn(msg, callback){
 var hover_offset = 0;
 
 function _window_resize(){
-    var $right = $('#right'),
-            ww = $(window).width();
-    $right.width(ww-400);
-    $(".queue-item-text").css("width", ww-(400+65+72+43));
+    var rightW = $('#right').width();
+    $(".queue-item-text").css("width", rightW-(65+72+43));
     $("#now-playing-text").css("width", $("#top-row").width()-(180+20));
     $("#now-playing-text h1").css("width", $("#top-row").width()-(180+60));
 }
@@ -1764,7 +1763,9 @@ function nestBuild() {
 
 function nestJoin(ev) {
     if (ev) ev.preventDefault();
-    var code = ($('#nest-join-code').val() || '').trim().toUpperCase();
+    var code = prompt('Enter the 5-character Nest code:');
+    if (code === null) return; // user cancelled
+    code = code.trim().toUpperCase();
     if (!code || code.length !== 5) {
         nestShowError('Enter a 5-character code');
         return;
@@ -1874,9 +1875,9 @@ window.addEventListener('load', function(){
     addCommentsClickHandlers();
     addCommentInputKeyPressHandler();
 
-    // Nest bar event handlers
+    // EchoNest tab event handlers
     $('#nest-build').on('click', nestBuild);
-    $('#nest-join-form').on('submit', nestJoin);
+    $('#nest-join-btn').on('click', nestJoin);
     $('#nest-share').on('click', nestShare);
 
     // Fetch initial listener count for temporary nests
