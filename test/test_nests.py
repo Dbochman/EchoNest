@@ -398,6 +398,18 @@ class TestBillingAPI:
         assert rv1.status_code in (400, 401, 403)
         assert rv2.status_code in (400, 401, 403, 409)
 
+    def test_billing_entitlements_cache(self, client):
+        rv = self._get(
+            client,
+            "/api/billing/status",
+            headers={"Authorization": "Bearer test-secret-token-12345"},
+        )
+        assert rv.status_code in (200, 401, 403)
+        if rv.status_code == 200:
+            data = rv.get_json()
+            assert "plan_tier" in data
+            assert "features" in data
+
 
 @pytest.mark.xfail(reason="Super admin interface not implemented yet")
 class TestSuperAdminAPI:
@@ -447,5 +459,80 @@ class TestSuperAdminAPI:
             "/api/admin/vanity/release",
             headers={"Authorization": "Bearer test-secret-token-12345"},
             json={"vanity_code": "jazznight", "reason": "requested"},
+        )
+        assert rv.status_code in (200, 400, 401, 403, 404)
+
+
+@pytest.mark.xfail(reason="Entitlement gating not implemented yet")
+class TestEntitlementGates:
+    @pytest.fixture
+    def client(self):
+        if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
+            pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
+
+        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        from app import app, CONF
+
+        app.config["TESTING"] = True
+        self._host = str(CONF.HOSTNAME) if CONF.HOSTNAME else "localhost:5000"
+        with app.test_client() as client:
+            yield client
+
+    def _patch(self, client, path, **kwargs):
+        headers = kwargs.pop("headers", {})
+        headers["Host"] = self._host
+        return client.patch(path, headers=headers, **kwargs)
+
+    def test_tier_a_gate_on_moderation(self, client):
+        rv = self._patch(
+            client,
+            "/api/nests/XXXXX/admin",
+            headers={"Authorization": "Bearer test-secret-token-12345"},
+            json={"banlist": ["user@example.com"]},
+        )
+        assert rv.status_code in (200, 401, 403, 404)
+        if rv.status_code == 403:
+            data = rv.get_json()
+            assert data.get("error") in ("forbidden", "feature_not_allowed")
+
+    def test_tier_b_gate_on_theme(self, client):
+        rv = self._patch(
+            client,
+            "/api/nests/XXXXX/admin",
+            headers={"Authorization": "Bearer test-secret-token-12345"},
+            json={"theme": {"accent": "#00ff88"}},
+        )
+        assert rv.status_code in (200, 401, 403, 404)
+        if rv.status_code == 403:
+            data = rv.get_json()
+            assert data.get("error") in ("forbidden", "feature_not_allowed")
+
+
+@pytest.mark.xfail(reason="Audit logging not implemented yet")
+class TestAuditLogs:
+    @pytest.fixture
+    def client(self):
+        if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
+            pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
+
+        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        from app import app, CONF
+
+        app.config["TESTING"] = True
+        self._host = str(CONF.HOSTNAME) if CONF.HOSTNAME else "localhost:5000"
+        with app.test_client() as client:
+            yield client
+
+    def _post(self, client, path, **kwargs):
+        headers = kwargs.pop("headers", {})
+        headers["Host"] = self._host
+        return client.post(path, headers=headers, **kwargs)
+
+    def test_admin_actions_write_audit(self, client):
+        rv = self._post(
+            client,
+            "/api/nests/XXXXX/ban",
+            headers={"Authorization": "Bearer test-secret-token-12345"},
+            json={"email": "user@example.com", "reason": "spam"},
         )
         assert rv.status_code in (200, 400, 401, 403, 404)
