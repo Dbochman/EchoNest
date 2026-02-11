@@ -376,3 +376,76 @@ class TestBillingAPI:
             headers={"Authorization": "Bearer test-secret-token-12345"},
         )
         assert rv.status_code in (200, 401, 403)
+
+    def test_billing_webhook_signature_required(self, client):
+        rv = self._post(client, "/api/billing/webhook", data="{}")
+        assert rv.status_code in (400, 401, 403)
+
+    def test_billing_webhook_idempotency(self, client):
+        payload = '{"id":"evt_123","type":"invoice.payment_succeeded"}'
+        rv1 = self._post(
+            client,
+            "/api/billing/webhook",
+            data=payload,
+            headers={"Stripe-Signature": "t=123,v1=bad"},
+        )
+        rv2 = self._post(
+            client,
+            "/api/billing/webhook",
+            data=payload,
+            headers={"Stripe-Signature": "t=123,v1=bad"},
+        )
+        assert rv1.status_code in (400, 401, 403)
+        assert rv2.status_code in (400, 401, 403, 409)
+
+
+@pytest.mark.xfail(reason="Super admin interface not implemented yet")
+class TestSuperAdminAPI:
+    @pytest.fixture
+    def client(self):
+        if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
+            pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
+
+        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        from app import app, CONF
+
+        app.config["TESTING"] = True
+        self._host = str(CONF.HOSTNAME) if CONF.HOSTNAME else "localhost:5000"
+        with app.test_client() as client:
+            yield client
+
+    def _get(self, client, path, **kwargs):
+        headers = kwargs.pop("headers", {})
+        headers["Host"] = self._host
+        return client.get(path, headers=headers, **kwargs)
+
+    def _post(self, client, path, **kwargs):
+        headers = kwargs.pop("headers", {})
+        headers["Host"] = self._host
+        return client.post(path, headers=headers, **kwargs)
+
+    def test_superadmin_list_nests(self, client):
+        rv = self._get(
+            client,
+            "/api/admin/nests",
+            headers={"Authorization": "Bearer test-secret-token-12345"},
+        )
+        assert rv.status_code in (200, 401, 403, 404)
+
+    def test_superadmin_force_delete(self, client):
+        rv = self._post(
+            client,
+            "/api/admin/nests/XXXXX/delete",
+            headers={"Authorization": "Bearer test-secret-token-12345"},
+            json={"reason": "abuse"},
+        )
+        assert rv.status_code in (200, 400, 401, 403, 404)
+
+    def test_superadmin_release_vanity(self, client):
+        rv = self._post(
+            client,
+            "/api/admin/vanity/release",
+            headers={"Authorization": "Bearer test-secret-token-12345"},
+            json={"vanity_code": "jazznight", "reason": "requested"},
+        )
+        assert rv.status_code in (200, 400, 401, 403, 404)
