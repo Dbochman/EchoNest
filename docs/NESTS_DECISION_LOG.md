@@ -134,3 +134,11 @@ For async handoffs, use `docs/NESTS_HANDOFF_TEMPLATE.md`.
 **Context:** `db.py` calls `auth.get_access_token()` at module level (line 54). This fails when Spotify credentials are not configured (e.g., CI, local dev without creds). The `TestRedisKeyPrefixing` test catches the import failure and calls `pytest.xfail()`, meaning it can never transition from xfail to passing in environments without Spotify.
 **Decision:** Wrap the module-level `auth.get_access_token()` call with `if not os.environ.get('SKIP_SPOTIFY_PREFETCH')` guard. This allows `db.py` to import cleanly in test environments while preserving the eager token fetch in production.
 **Rationale:** The `SKIP_SPOTIFY_PREFETCH` env var is already the established pattern for test environments (used in Makefile, CI, all test commands). The eager token fetch is an optimization, not a correctness requirement -- the token will be fetched lazily on first API call regardless.
+
+---
+
+## D017: echone.st as primary domain (not redirect)
+**Date:** 2026-02-10
+**Context:** Originally planned to use Cloudflare page rules to redirect `echone.st/{code}` → `andre.dylanbochman.com/nest/{code}`. The user decided to make echone.st the primary domain instead.
+**Decision:** Serve Andre directly from echone.st via Caddy. 301-redirect `andre.dylanbochman.com` and `www.echone.st` to `echone.st`. Handle bare nest codes (`echone.st/X7K2P`) with a Flask catch-all route that matches 5-char codes from CODE_CHARS and redirects to `/nest/{code}`. Remove Cloudflare page rules.
+**Rationale:** Serving directly is cleaner than a redirect chain. Users see `echone.st` in the URL bar. The catch-all route uses a strict regex matching only valid nest code characters, so it won't interfere with other routes. The route is registered last in Flask to avoid shadowing.

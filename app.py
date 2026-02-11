@@ -732,7 +732,8 @@ SAFE_PATHS = ('/login/', '/logout/', '/playing/', '/queue/', '/volume/',
 SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/youtube/lookup', '/youtube/playlist', '/add_song',
     '/blast_airhorn', '/airhorn_list', '/queue/', '/jam', '/api/')
 VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:5001',
-               str(CONF.HOSTNAME) if CONF.HOSTNAME else '')
+               str(CONF.HOSTNAME) if CONF.HOSTNAME else '',
+               str(CONF.ECHONEST_DOMAIN) if getattr(CONF, 'ECHONEST_DOMAIN', None) else '')
 
 
 @app.before_request
@@ -1643,3 +1644,17 @@ def api_nests_delete(code):
         return jsonify(error='forbidden', message='Cannot delete the main nest.'), 403
     nest_manager.delete_nest(code)
     return jsonify(ok=True)
+
+
+# Catch-all for bare nest codes: echone.st/X7K2P → /nest/X7K2P
+# Must be registered LAST so it doesn't shadow other routes.
+import re
+_NEST_CODE_RE = re.compile(r'^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$')
+
+
+@app.route('/<path:code>')
+def nest_code_catchall(code):
+    """Redirect bare nest codes to /nest/<code>."""
+    if _NEST_CODE_RE.match(code.upper()):
+        return redirect('/nest/' + code.upper())
+    abort(404)

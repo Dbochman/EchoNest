@@ -36,10 +36,9 @@ The current single-queue experience becomes the persistent **Main Nest** (lobby)
 
 ### Domain Setup
 
-`echone.st` redirects to `andre.dylanbochman.com/nest/{code}`:
-
-- **Option A (simple):** Caddy/Cloudflare redirect rule — `echone.st/{code}` → `andre.dylanbochman.com/nest/{code}`
-- **Option B (nicer):** Serve Andre directly from `echone.st` as an alias domain
+`echone.st` is the primary domain. Andre is served directly from it via Caddy.
+`andre.dylanbochman.com` 301-redirects to `echone.st`. Bare nest codes
+(`echone.st/X7K2P`) are caught by a Flask catch-all route and redirected to `/nest/X7K2P`.
 
 ---
 
@@ -323,7 +322,7 @@ The nest ID comes from:
 
 External short URL:
 ```
-echone.st/X7K2P      → redirects to andre.dylanbochman.com/nest/X7K2P
+echone.st/X7K2P      → Flask catch-all redirects to /nest/X7K2P
 ```
 
 Since the frontend is Backbone.js with no client-side routing, the simplest approach is to pass the `nest_id` into the template context and have `app.js` use it for the WebSocket connection and API calls.
@@ -380,30 +379,29 @@ When in the Main Nest, show a subtle "Build a Nest" button (doesn't clutter the 
 ### Phase 4: echone.st Domain — DONE
 
 Domain is registered (Netim, Lite Hosting, expires 2027-02-11) and configured on Cloudflare.
+echone.st is now the **primary domain** — served directly by Caddy on the DigitalOcean droplet.
 
 **Cloudflare Zone:**
 - Zone ID: `583f76bbb1bd8c655b86958885fdef76`
 - Account: `324caf800a82364b608b3e82d9a1debd` (dylanbochman@gmail.com)
 - Nameservers: `eric.ns.cloudflare.com`, `monika.ns.cloudflare.com` (set at Netim)
-- SSL: Full + Always Use HTTPS
-- API key stored in 1Password ("Cloudflare Global API Key")
 
 **DNS Records:**
-- `echone.st` → A `192.0.2.1` (proxied, dummy — Cloudflare handles redirect)
-- `www.echone.st` → A `192.0.2.1` (proxied)
+- `echone.st` → A `192.81.213.152` (proxied)
+- `www.echone.st` → A `192.0.2.1` (proxied, Caddy handles redirect)
 
-**Page Rules (2 of 3 free slots used):**
-1. `echone.st/*` → **302** → `https://andre.dylanbochman.com` (temporary blanket redirect while nests feature is in progress)
-2. `www.echone.st/*` → **301** → `https://echone.st/$1`
+**Caddy (see `/Caddyfile` in repo):**
+- `echone.st` → reverse proxy to localhost:5001 (primary)
+- `www.echone.st` → 301 redirect to `echone.st`
+- `andre.dylanbochman.com` → 301 redirect to `echone.st`
 
-**When nests feature ships:** Update page rule 1 to:
-- `echone.st/*` → **302** → `https://andre.dylanbochman.com/nest/$1`
-- This makes `echone.st/X7K2P` redirect to `andre.dylanbochman.com/nest/X7K2P`
-- Page rule ID: `6cf80b1b24a734f6194b82a02e09e79f`
+**Page Rules:** Cloudflare page rules removed — Caddy and Flask handle all routing.
+
+**Nest code routing:** Flask catch-all route matches bare 5-char nest codes
+(`echone.st/X7K2P`) and redirects to `/nest/X7K2P`.
 
 **Remaining TODO:**
 - Update "Share Nest" button to use `echone.st/{code}` short URL
-- Optional: serve Andre directly from `echone.st` as an alias domain (nicer than redirect)
 
 ### Phase 5: Polish
 
