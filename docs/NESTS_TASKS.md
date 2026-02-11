@@ -161,9 +161,9 @@ These are the test classes that should flip from `xfail` to passing:
 ## Phase 2: Nest Backend
 
 ### T6: Create NestManager class
-**File:** `nest_manager.py` (new)
+**File:** `nests.py` (add NestManager to existing helpers module created in T3)
 **Changes:**
-- `NestManager` class with Redis connection
+- `NestManager` class with Redis connection — add to `nests.py` so tests can import `nests.NestManager`
 - `create_nest(creator_email, name=None)` → generates code, stores in `NESTS|registry`
 - `get_nest(nest_id)` → reads from registry
 - `list_nests()` → returns all nests with member counts
@@ -174,8 +174,12 @@ These are the test classes that should flip from `xfail` to passing:
 - `generate_code()` → random 5-char from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, collision check
 - Initialize main nest in registry on first run if not present
 - Accept optional `redis_client` for test injection
+- **Module-level wrappers:** Also expose `join_nest(nest_id, email)` and `leave_nest(nest_id, email)` as module-level functions in `nests.py` (tests import them directly: `getattr(nests, "join_nest")`)
 **Commit:** `feat(nests): add NestManager class with CRUD operations`
-**Verify:** `TestMembershipHeartbeat` should pass (uses `members_key`/`member_key` from `nests.py`)
+**Verify:**
+- `TestMembershipHeartbeat` should pass (uses `members_key`/`member_key` from `nests.py`)
+- `TestNestManagerCRUD` should pass (imports `nests.NestManager`)
+- `TestWebSocketMembership` should pass (imports `nests.join_nest`/`nests.leave_nest`)
 
 ### T7: Add nest API routes
 **File:** `app.py`
@@ -310,6 +314,13 @@ SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_nests.py -v
 - `TestNestCleanupLogic::test_should_delete_nest_predicate`
 - `TestMembershipHeartbeat::test_member_key_helpers`
 - `TestMasterPlayerMultiNest::test_master_player_iterates_nests`
+- `TestNestManagerCRUD::test_create_get_list_delete`
+- `TestMigrationScriptBehavior::test_migration_script_idempotent`
+- `TestMigrationScriptBehavior::test_migration_skips_existing_dest`
+- `TestNestAuthGating::test_api_nests_requires_auth`
+- `TestNestAuthGating::test_nest_page_requires_auth`
+- `TestWebSocketMembership::test_membership_join_leave`
+- `TestWebSocketMembership::test_heartbeat_ttl_refresh`
 - `TestNestsAPI::*` (all API contract tests)
 
 **Should remain XFAIL (future phases):**

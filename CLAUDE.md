@@ -128,9 +128,9 @@ Nests are independent listening sessions (rooms) with shareable 5-character code
 - `static/js/app.js` — Use `nest_id` for WebSocket connection and API calls
 
 **New files:**
-- `nest_manager.py` — `NestManager` class for CRUD operations
+- `nests.py` — Helper functions (`pubsub_channel`, `member_key`, `should_delete_nest`, etc.) + `NestManager` class
 - `migrate_keys.py` — One-time migration script for existing Redis keys
-- `test/test_nests_*.py` — Test suite (written by Codex)
+- `test/test_nests.py` — Contract test suite (written by Codex, xfail until implemented)
 
 ### Redis Key Pattern
 
