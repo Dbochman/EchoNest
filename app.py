@@ -25,6 +25,7 @@ from flask_assets import Environment, Bundle
 
 from config import CONF
 from db import DB, is_spotify_rate_limited, set_spotify_rate_limit, handle_spotify_exception
+from nests import pubsub_channel
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -281,7 +282,7 @@ class MusicNamespace(WebSocketManager):
 
     def listener(self):
         r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379, password=CONF.REDIS_PASSWORD or None, decode_responses=True).pubsub()
-        r.subscribe('MISC|update-pubsub')
+        r.subscribe(pubsub_channel("main"))
         for m in r.listen():
             if m['type'] != 'message':
                 continue
@@ -556,7 +557,7 @@ class VolumeNamespace(WebSocketManager):
 
     def listener(self):
         r = redis.StrictRedis(host=CONF.REDIS_HOST or 'localhost', port=CONF.REDIS_PORT or 6379, password=CONF.REDIS_PASSWORD or None, decode_responses=True).pubsub()
-        r.subscribe('MISC|update-pubsub')
+        r.subscribe(pubsub_channel("main"))
         for m in r.listen():
             if m['type'] != 'message':
                 continue
@@ -1288,7 +1289,7 @@ def api_events():
             password=CONF.REDIS_PASSWORD or None,
             decode_responses=True,
         ).pubsub()
-        r.subscribe('MISC|update-pubsub')
+        r.subscribe(pubsub_channel("main"))
         try:
             while True:
                 msg = None
