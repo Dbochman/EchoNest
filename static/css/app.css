@@ -97,11 +97,11 @@ float:left; width:30px; height:30px;
 #playing-buttons a:hover {background:rgba(0,0,0,0.4);text-decoration:none;}
 #now-playing-person {float:right; height:270px; width:180px;background-repeat:no-repeat;background-position:center;background-color:black;background-size:contain;}
 
-#now-playing-album {background:#00000F; height:400px;width:100%;float:left;position:absolute;z-index:1000;background-repeat:no-repeat;background-size:contain;}
-#progress-wrapper {width:100%; margin-top:392px;z-index:2000;position:absolute;}
+#now-playing-album {background:#00000F; width:100%;aspect-ratio:1;position:relative;z-index:1000;background-repeat:no-repeat;background-size:cover;background-position:center;}
+#progress-wrapper {width:100%;z-index:2000;position:absolute;bottom:0;left:0;}
 #playing-progress {background: rgba(var(--accent-hover-rgb), 0.85); height:8px; width: 0px;-webkit-transition: width 500ms;transition:width 500ms;}
 
-#left-col-menu {width:100%;float:left;background:rgb(31, 31, 31);margin-top:400px;display:flex;flex-wrap:nowrap;}
+#left-col-menu {width:100%;background:rgb(31, 31, 31);display:flex;flex-wrap:nowrap;}
 
 .menu-item {flex:1;margin:0;padding:10px 0;text-align:center;color: rgb(var(--accent-hover-rgb));border-right:1px solid rgba(0,0,0,0.4);box-sizing:border-box;font-size:13px;}
 .menu-item:hover {text-decoration: none; background:rgb(0,0,0,0.8); color: rgb(var(--accent-hover-rgb));}
@@ -114,14 +114,14 @@ float:left; width:30px; height:30px;
                 border-top: 1px solid rgba(0, 0, 0, 0.4);}
 .left-button:hover, .left-button:focus {text-decoration:none; background: rgb(31, 31, 31);color: rgb(var(--accent-hover-rgb));}
 
-.search-item {width: 100%;cursor:pointer;border-bottom:1px solid rgba(17, 17, 17, 0.8);display:table-row;}
+.search-item {width: 100%;cursor:pointer;border-bottom:1px solid rgba(17, 17, 17, 0.8);display:flex;align-items:center;}
 .search-item:nth-child(even) {background-color:rgba(0,0,0,0.3);}
 .search-item h4, .search-item h5 {margin:0;padding:0;}
 .search-item:hover {background: rgba(255,255,255,0.1);}
-.search-item .text {color:#EEEEFF;padding:0 10px;display:table-cell;max-width:0;overflow:hidden;text-overflow:ellipsis;}
-.search-item .icon {height:60px;width:60px;
-            background: no-repeat center center; background-size:contain;
-            display:table-cell;}
+.search-item .text {color:#EEEEFF;padding:0 10px;flex:1;min-width:0;overflow:hidden;}
+.search-item .text h4, .search-item .text h5 {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.search-item .icon {height:60px;width:60px;flex-shrink:0;
+            background: no-repeat center center; background-size:contain;}
 #song-search input {width:100%;box-sizing:border-box;padding:10px;
                     background: rgba(255,255,255,0.3);
                     color: #FFFFFF;border-radius:0;
@@ -243,7 +243,7 @@ float:left; width:30px; height:30px;
                     background: rgba(255,255,255,0.3);
                     color: #383838;border-radius:0;
                     border:2px solid rgba(255,255,255,0.4);}
-#ytapiplayer {position:absolute;top:0;left:0; z-index:900; width:100% !important; height:400px !important;}
+#ytapiplayer {position:absolute;top:0;left:0; z-index:1100; width:100% !important; height:100% !important; display:none;}
 
 #volume-tab {
     color: #EEEEFF;
@@ -293,7 +293,6 @@ background-position: center center;
 #connect.disabled {display:none;}
 
 /* Paused state - album art overlay */
-/* Note: #now-playing-album already has position:absolute, keep it */
 
 #now-playing-album.paused::before {
     content: '';

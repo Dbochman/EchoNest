@@ -586,7 +586,7 @@ function fix_player(src, id, pos, paused){
     // Track the last synced track ID to prevent repeated sync calls
     if (src == 'spotify') {
       $('#ytapiplayer').data('youtube_hidden', 'true');
-      $('#ytapiplayer').css('z-index', '900');
+      $('#ytapiplayer').hide();
 
       // Only sync if this is a new track we haven't synced to yet
       if (last_synced_spotify_track != id) {
@@ -620,7 +620,7 @@ function fix_player(src, id, pos, paused){
             }
             if(!playing || playing != id){
                 $('#ytapiplayer').data('youtube_hidden', 'false');
-                $('#ytapiplayer').css('z-index', '1100');
+                $('#ytapiplayer').show();
                 Y.loadVideoById(id, pos);
                 // Respect local mute state and use local volume (volumeBeforeMute)
                 Y.setVolume(localMuted ? 0 : (volumeBeforeMute * yt_volume_adjust));
