@@ -163,7 +163,7 @@ EchoNest has its roots in **Prosecco**, an internal tool originally developed at
 
 After Spotify acquired The Echo Nest in 2014, Prosecco was forked and rebranded as **Andre** for use in Spotify's offices. The system continued to evolve, and was later forked again and rebranded as **Highlife** for other internal deployments.
 
-This repository represents the EchoNest branch, which was resurrected from a 2018 snapshot and modernized to Python 3 in 2024-2026. The historical play logs from 2017-2018 power the "Throwback" feature, which suggests songs that were played on the same day of the week years ago.
+This repository represents the EchoNest branch, which was resurrected from a 2018 snapshot and modernized to Python 3 in 2026. The historical play logs from 2017-2018 power the "Throwback" feature, which suggests songs that were played on the same day of the week years ago.
 
 ## Changelog
 See `docs/CHANGELOG.md` for the resurrection change summary and testing notes.
