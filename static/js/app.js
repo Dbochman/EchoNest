@@ -2014,9 +2014,6 @@ window.addEventListener('load', function(){
     $('#make-player').on('click', make_player);
     $('#sync-audio-btn').on('click', make_player);
     $('#airhorn-sync-audio').on('click', make_player);
-    $('#connect-spotify').on('click', function() {
-        socket.emit('fetch_auth_token');
-    });
     $('#change-color').on('click', changeColors);
 
     // Load saved color theme

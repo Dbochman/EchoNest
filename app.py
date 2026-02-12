@@ -884,6 +884,23 @@ def spotify_connect():
     return render_template('spotify_connect.html')
 
 
+@app.route('/spotify_connect/authorize')
+def spotify_authorize():
+    """Redirect to Spotify OAuth — used by the 'connect spotify' button."""
+    email = session.get('email')
+    if not email:
+        return redirect('/login/')
+    auth = spotipy.oauth2.SpotifyOAuth(
+        CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
+        "prosecco:%s" % email,
+        scope="streaming user-read-currently-playing user-read-playback-state user-modify-playback-state",
+        cache_path="%s/%s" % (CONF.OAUTH_CACHE_PATH, email))
+    token = auth.get_cached_token()
+    if token:
+        return redirect('/')
+    return redirect(auth.get_authorize_url())
+
+
 @app.route('/authentication/spotify_callback/')
 def spotify_callback():
     try:
