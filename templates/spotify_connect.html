@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block body %}
         <script type="text/javascript">
+            // If opened as a popup (from sync audio), close the window.
+            // Otherwise redirect home (from "connect spotify" link).
             window.close();
+            setTimeout(function() { window.location.href = '/'; }, 500);
         </script>
 {% endblock %}
