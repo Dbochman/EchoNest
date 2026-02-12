@@ -1413,14 +1413,15 @@ function podcast_search_submit(ev){
 
 function song_search_click(ev){
     ev.preventDefault();
-    var $this = $(this),
-        key = $this.data('key'),
+    var $this = $(this);
+    if ($this.hasClass('added')) return;
+    var key = $this.data('key'),
         src = $this.data('src');
     console.log('song_search_click called:', {key: key, src: src, readyState: socket._s ? socket._s.readyState : 'no socket'});
-    $('#youtube-results, #spotify-results, #soundcloud-results').empty();
     socket.emit('add_song', key, src);
     console.log('socket.emit add_song sent');
-    $(window).scrollTop(0);
+    $this.addClass('added').css('opacity', 0.4);
+    $this.find('.search-result-title').append(' <span style="color:#4CAF50;font-size:0.8em;">&#10003; added</span>');
 }
 
 is_player = false;
