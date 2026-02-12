@@ -1575,10 +1575,13 @@ def api_nests_create():
         return jsonify(error='Nests not available'), 503
     body = request.get_json(silent=True) or {}
     name = body.get('name')
+    seed_track = body.get('seed_track')
     creator = g.auth_email
     try:
-        nest = nest_manager.create_nest(creator, name=name)
+        nest = nest_manager.create_nest(creator, name=name, seed_track=seed_track)
         return jsonify(nest)
+    except ValueError as e:
+        return jsonify(error='invalid_request', message=str(e)), 400
     except Exception as e:
         logger.error("Error creating nest: %s", e)
         return jsonify(error='internal_error', message=str(e)), 500
@@ -1678,7 +1681,15 @@ _NEST_CODE_RE = re.compile(r'^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$')
 
 @app.route('/<path:code>')
 def nest_code_catchall(code):
-    """Redirect bare nest codes to /nest/<code>."""
+    """Resolve bare nest codes or slugs to the nest page."""
     if _NEST_CODE_RE.match(code.upper()):
         return redirect('/nest/' + code.upper())
+    # Try slug lookup (e.g., echone.st/friday-vibes)
+    if nest_manager is not None:
+        from nests import slugify
+        slug = slugify(code)
+        if slug:
+            nest = nest_manager.get_nest(slug)
+            if nest:
+                return redirect('/nest/' + nest['code'])
     abort(404)

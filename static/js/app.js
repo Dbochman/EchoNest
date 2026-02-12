@@ -1754,53 +1754,135 @@ function nestShowError(msg) {
 }
 
 function nestBuild() {
-    var name = prompt('Name your Nest (or leave blank):');
-    if (name === null) return; // user cancelled
-    var body = {};
-    if (name && name.trim()) {
-        body.name = name.trim();
+    // Remove any existing dialog
+    $('#nest-create-backdrop, #nest-create-dialog').remove();
+
+    var html = '<div id="nest-create-backdrop"></div>' +
+        '<div id="nest-create-dialog">' +
+        '<h3>Create a Nest</h3>' +
+        '<div class="nest-create-field">' +
+        '<label for="nest-create-name">Name <span class="nest-create-optional">(optional)</span></label>' +
+        '<input type="text" id="nest-create-name" placeholder="Leave blank for a random name" />' +
+        '</div>' +
+        '<div class="nest-create-field" id="nest-seed-field" style="display:none">' +
+        '<label for="nest-create-seed">Seed Track <span class="nest-create-optional">(optional)</span></label>' +
+        '<input type="text" id="nest-create-seed" placeholder="spotify:track:... or search" />' +
+        '<p class="nest-create-hint">Sets the genre vibe for auto-filled songs</p>' +
+        '<div id="nest-seed-results"></div>' +
+        '</div>' +
+        '<div class="nest-create-actions">' +
+        '<a href="javascript:void(0)" class="nest-create-submit">Create</a>' +
+        '<a href="javascript:void(0)" class="alert-close">Cancel</a>' +
+        '</div>' +
+        '</div>';
+    $('#page-container').append(html);
+
+    // Close / cancel
+    function closeCreateDialog() {
+        $('#nest-create-backdrop, #nest-create-dialog').remove();
     }
-    fetch('/api/nests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(body)
-    }).then(function(resp) {
-        if (!resp.ok) {
-            return resp.json().then(function(data) {
-                throw new Error(data.message || data.error || 'Failed to create nest');
-            });
+    $('#nest-create-backdrop').on('click', closeCreateDialog);
+    $('#nest-create-dialog .alert-close').on('click', closeCreateDialog);
+
+    // Show seed field only when a custom name is entered
+    $('#nest-create-name').on('input', function() {
+        var hasName = $(this).val().trim().length > 0;
+        $('#nest-seed-field').toggle(hasName);
+        if (!hasName) {
+            $('#nest-create-seed').val('');
+            $('#nest-seed-results').empty();
         }
-        return resp.json();
-    }).then(function(data) {
-        if (data.code) {
-            window.location.href = '/nest/' + data.code;
-        }
-    }).catch(function(err) {
-        nestShowError(err.message || 'Failed to create nest');
     });
+
+    // Seed track search (debounced)
+    var searchTimer = null;
+    $('#nest-create-seed').on('input', function() {
+        var q = $(this).val().trim();
+        if (searchTimer) clearTimeout(searchTimer);
+        if (!q || q.startsWith('spotify:track:')) {
+            $('#nest-seed-results').empty();
+            return;
+        }
+        searchTimer = setTimeout(function() {
+            fetch('/search/v2?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(results) {
+                    var $results = $('#nest-seed-results').empty();
+                    var tracks = (results || []).slice(0, 5);
+                    tracks.forEach(function(t) {
+                        if (!t.uri) return;
+                        var $item = $('<div class="nest-seed-item">')
+                            .text(t.artist + ' — ' + t.track_name)
+                            .attr('data-uri', t.uri)
+                            .on('click', function() {
+                                $('#nest-create-seed').val($(this).attr('data-uri'));
+                                $('#nest-seed-results').empty();
+                            });
+                        $results.append($item);
+                    });
+                });
+        }, 300);
+    });
+
+    // Submit
+    $('#nest-create-dialog .nest-create-submit').on('click', function() {
+        var body = {};
+        var name = $('#nest-create-name').val().trim();
+        var seed = $('#nest-create-seed').val().trim();
+        if (name) body.name = name;
+        if (seed) body.seed_track = seed;
+        fetch('/api/nests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(body)
+        }).then(function(resp) {
+            if (!resp.ok) {
+                return resp.json().then(function(data) {
+                    throw new Error(data.message || data.error || 'Failed to create nest');
+                });
+            }
+            return resp.json();
+        }).then(function(data) {
+            closeCreateDialog();
+            if (data.slug) {
+                window.location.href = '/' + data.slug;
+            } else if (data.code) {
+                window.location.href = '/nest/' + data.code;
+            }
+        }).catch(function(err) {
+            nestShowError(err.message || 'Failed to create nest');
+        });
+    });
+
+    // Focus name field
+    $('#nest-create-name').focus();
 }
 
 function nestJoin(ev) {
     if (ev) ev.preventDefault();
     // Remove any existing join dialog
-    $('#nest-join-dialog').remove();
+    $('#nest-join-backdrop, #nest-join-dialog').remove();
 
-    var html = '<div id="nest-join-dialog">' +
+    var html = '<div id="nest-join-backdrop"></div>' +
+        '<div id="nest-join-dialog">' +
         '<h3>Join a Nest</h3>' +
         '<div id="nest-join-list"><p class="nest-join-loading">Loading nests...</p></div>' +
         '<div class="nest-join-manual">' +
-        '<input type="text" id="nest-join-code" placeholder="Or enter a 5-character code" maxlength="5" />' +
+        '<input type="text" id="nest-join-code" placeholder="ENTER CODE" maxlength="5" />' +
         '<a href="javascript:void(0)" class="nest-join-go">Go</a>' +
         '</div>' +
         '<a href="javascript:void(0)" class="alert-close">Close</a>' +
         '</div>';
     $('#page-container').append(html);
 
-    // Close button
-    $('#nest-join-dialog .alert-close').on('click', function() {
-        $('#nest-join-dialog').remove();
-    });
+    function closeJoinDialog() {
+        $('#nest-join-backdrop, #nest-join-dialog').remove();
+    }
+
+    // Close on backdrop click or close button
+    $('#nest-join-backdrop').on('click', closeJoinDialog);
+    $('#nest-join-dialog .alert-close').on('click', closeJoinDialog);
 
     // Manual code entry
     $('#nest-join-dialog .nest-join-go').on('click', function() {
