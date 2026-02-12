@@ -1,6 +1,6 @@
 # Security Hardening
 
-This document details all security hardening measures implemented for Andre's production deployment.
+This document details all security hardening measures implemented for EchoNest's production deployment.
 
 ## Overview
 
@@ -101,14 +101,14 @@ ssh deploy@192.81.213.152
 **Risk**: Container escape with root privileges.
 
 **Implementation**:
-- Created dedicated `andre` user (UID/GID 1000) in Dockerfile
+- Created dedicated `echonest` user (UID/GID 1000) in Dockerfile
 - All app containers run as non-root via `user: "1000:1000"`
 - Application files owned by non-root user
 
 ```dockerfile
-RUN groupadd --gid 1000 andre && \
-    useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home andre
-USER andre
+RUN groupadd --gid 1000 echonest && \
+    useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home echonest
+USER echonest
 ```
 
 ### 7. Pinned Image Versions (High)
@@ -129,15 +129,15 @@ image: redis:7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b
 **Risk**: Lateral movement, data exfiltration from compromised containers.
 
 **Implementation**:
-- `andre_network`: External network for Spotify/OAuth API access
-- `andre_internal`: Internal-only network (**no internet access**)
+- `echonest_network`: External network for Spotify/OAuth API access
+- `echonest_internal`: Internal-only network (**no internet access**)
 - Redis isolated to internal network only
 
 ```yaml
 networks:
-  andre_network:
+  echonest_network:
     internal: false  # Internet access for APIs
-  andre_internal:
+  echonest_internal:
     internal: true   # No internet access
 ```
 
@@ -149,7 +149,7 @@ networks:
 | Service | CPU Limit | Memory Limit |
 |---------|-----------|--------------|
 | Redis   | 0.5       | 256M         |
-| Andre   | 1.0       | 512M         |
+| EchoNest | 1.0       | 512M         |
 | Player  | 0.5       | 256M         |
 
 ### 10. Read-Only Filesystem (Medium)
@@ -181,7 +181,7 @@ cap_drop:
 
 **Implementation**:
 - Redis: `redis-cli ping`
-- Andre: HTTP check on `/health` endpoint
+- EchoNest: HTTP check on `/health` endpoint
 - Automatic container restart on failure
 
 ### 13. Redis Authentication (High)
@@ -220,7 +220,7 @@ Based on [Redis Security Documentation](https://redis.io/docs/latest/operate/oss
 | Password authentication | ✓ | `--requirepass` enabled |
 | Protected mode | ✓ | `--protected-mode yes` |
 | Run as non-root | ✓ | Redis Alpine image default |
-| Network isolation | ✓ | `andre_internal` network |
+| Network isolation | ✓ | `echonest_internal` network |
 | TLS encryption | N/A | Not needed for internal Docker network |
 | ACL-based command restrictions | Future | Would block FLUSHALL, CONFIG, etc. |
 | Disable default user | Future | Requires ACL file configuration |
@@ -244,9 +244,9 @@ Based on [Redis Security Documentation](https://redis.io/docs/latest/operate/oss
 - `@require_api_token` decorator on all `/api/queue/*` and `/api/spotify/*` endpoints
 - Bearer token in `Authorization` header
 - Constant-time comparison via `secrets.compare_digest()` (prevents timing side-channel attacks)
-- Token stored in `.env` file and 1Password (`op://OpenClaw/Andre API Token/password`)
+- Token stored in `.env` file and 1Password (`op://OpenClaw/EchoNest API Token/password`)
 - Header format: `Authorization: Bearer <token>`
-- Rotate token immediately if leaked (update `/opt/andre/.env` + 1Password, then `docker compose restart andre`)
+- Rotate token immediately if leaked (update `/opt/echonest/.env` + 1Password, then `docker compose restart echonest`)
 
 ```python
 # app.py
@@ -298,15 +298,15 @@ ssh deploy@100.92.192.62 "echo 'Tailscale SSH OK'"
 # === Docker Security ===
 
 # 4. Verify non-root user
-ssh deploy@192.81.213.152 "docker exec andre_app whoami"
-# Expected: andre (not root)
+ssh deploy@192.81.213.152 "docker exec echonest_app whoami"
+# Expected: echonest (not root)
 
 # 5. Verify read-only filesystem
-ssh deploy@192.81.213.152 "docker exec andre_app touch /test 2>&1"
+ssh deploy@192.81.213.152 "docker exec echonest_app touch /test 2>&1"
 # Expected: Read-only file system error
 
 # 6. Verify capabilities dropped
-ssh deploy@192.81.213.152 "docker exec andre_app cat /proc/1/status | grep CapEff"
+ssh deploy@192.81.213.152 "docker exec echonest_app cat /proc/1/status | grep CapEff"
 # Expected: CapEff: 0000000000000000
 
 # 7. Verify resource limits
@@ -314,36 +314,36 @@ ssh deploy@192.81.213.152 "docker stats --no-stream"
 # Expected: MEM LIMIT shows configured values
 
 # 8. Verify network isolation
-ssh deploy@192.81.213.152 "docker exec andre_redis ping -c 1 8.8.8.8 2>&1"
+ssh deploy@192.81.213.152 "docker exec echonest_redis ping -c 1 8.8.8.8 2>&1"
 # Expected: Network unreachable
 
 # 9. Verify health checks
-ssh deploy@192.81.213.152 "docker inspect andre_app --format='{{.State.Health.Status}}'"
+ssh deploy@192.81.213.152 "docker inspect echonest_app --format='{{.State.Health.Status}}'"
 # Expected: healthy
 
 # 10. Verify Redis authentication
-ssh deploy@192.81.213.152 "docker exec andre_redis redis-cli PING 2>&1"
+ssh deploy@192.81.213.152 "docker exec echonest_redis redis-cli PING 2>&1"
 # Expected: NOAUTH Authentication required
 
-ssh deploy@192.81.213.152 "docker exec andre_redis redis-cli -a \$REDIS_PASSWORD PING 2>&1"
+ssh deploy@192.81.213.152 "docker exec echonest_redis redis-cli -a \$REDIS_PASSWORD PING 2>&1"
 # Expected: PONG
 
 # 11. Verify Redis protected mode
-ssh deploy@192.81.213.152 "docker exec andre_redis redis-cli -a \$REDIS_PASSWORD CONFIG GET protected-mode"
+ssh deploy@192.81.213.152 "docker exec echonest_redis redis-cli -a \$REDIS_PASSWORD CONFIG GET protected-mode"
 # Expected: protected-mode yes
 
 # === API Security ===
 
 # 12. Verify API rejects unauthenticated requests
-curl -s -o /dev/null -w "%{http_code}" -X POST https://andre.dylanbochman.com/api/queue/skip
+curl -s -o /dev/null -w "%{http_code}" -X POST https://echone.st/api/queue/skip
 # Expected: 401
 
 # 13. Verify API rejects invalid token
-curl -s -o /dev/null -w "%{http_code}" -X POST https://andre.dylanbochman.com/api/queue/skip -H "Authorization: Bearer wrong"
+curl -s -o /dev/null -w "%{http_code}" -X POST https://echone.st/api/queue/skip -H "Authorization: Bearer wrong"
 # Expected: 403
 
 # 14. Verify API accepts valid token
-curl -s -o /dev/null -w "%{http_code}" -X POST https://andre.dylanbochman.com/api/queue/skip -H "Authorization: Bearer \$ANDRE_API_TOKEN"
+curl -s -o /dev/null -w "%{http_code}" -X POST https://echone.st/api/queue/skip -H "Authorization: Bearer \$ECHONEST_API_TOKEN"
 # Expected: 200
 ```
 
@@ -354,7 +354,7 @@ curl -s -o /dev/null -w "%{http_code}" -X POST https://andre.dylanbochman.com/ap
 ### If you suspect a compromise:
 
 1. **Isolate**: `ssh deploy@192.81.213.152 "docker compose down"` (or via Tailscale: `ssh deploy@100.92.192.62`)
-2. **Preserve logs**: `ssh deploy@... "docker logs andre_app > /tmp/app.log 2>&1"`
+2. **Preserve logs**: `ssh deploy@... "docker logs echonest_app > /tmp/app.log 2>&1"`
 3. **Check for persistence**:
    ```bash
    # Check crontabs
@@ -400,7 +400,7 @@ docker compose up -d --build
 | `Dockerfile` | Non-root user, curl for healthcheck, pinned base image |
 | `docker-compose.yaml` | Networks, resource limits, read-only FS, security options, health checks |
 | `app.py` | `require_api_token` decorator, `/api/` in SAFE_PARAM_PATHS, 9 REST API endpoints (queue + Spotify Connect) |
-| `config.py` | `ANDRE_API_TOKEN`, `ANDRE_SPOTIFY_EMAIL` in ENV_OVERRIDES |
+| `config.py` | `ECHONEST_API_TOKEN`, `ECHONEST_SPOTIFY_EMAIL` in ENV_OVERRIDES |
 | `/etc/ssh/sshd_config` | Disabled root login and password auth |
 | `/etc/fail2ban/jail.local` | SSH jail with 365-day ban |
 

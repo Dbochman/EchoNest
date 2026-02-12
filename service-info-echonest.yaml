@@ -1,0 +1,14 @@
+id: echonest
+description: EchoNest - Collaborative Music Queue
+system: echonest
+owner: proseccohack
+visibility: private
+dependencies: []
+
+facts:
+  docs:
+  service_discovery:
+    - echonest
+  role: echonest  # IMPORTANT! Needed for provisioning!
+  lifecycle: experimental
+  helios_agent: true

@@ -8,7 +8,7 @@ Implemented and reviewed on 2026-02-05.
 
 ## Overview
 
-Add podcast/episode support to Andre, enabling users to search for and play Spotify podcasts alongside music tracks. Episodes display properly with show name (instead of artist) and correct metadata.
+Add podcast/episode support to EchoNest, enabling users to search for and play Spotify podcasts alongside music tracks. Episodes display properly with show name (instead of artist) and correct metadata.
 
 ---
 
@@ -138,7 +138,7 @@ Also added re-render of playlist on `now_playing_update` to apply filter immedia
 
 ### Spotify Unpause Fix (2026-02-05)
 
-**Issue:** When Andre was paused and then unpaused, Spotify playback would not resume for synced clients. The `last_synced_spotify_track` check in `fix_player()` prevented re-playing the same track.
+**Issue:** When EchoNest was paused and then unpaused, Spotify playback would not resume for synced clients. The `last_synced_spotify_track` check in `fix_player()` prevented re-playing the same track.
 
 **Fix:** Added state transition detection in `now_playing_update` handler:
 ```javascript

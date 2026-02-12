@@ -19,7 +19,7 @@ class TestNestsAPI:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True
@@ -244,7 +244,7 @@ class TestNestsAdminAPI:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True
@@ -336,7 +336,7 @@ class TestBillingAPI:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True
@@ -430,7 +430,7 @@ class TestSuperAdminAPI:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True
@@ -482,7 +482,7 @@ class TestEntitlementGates:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True
@@ -540,7 +540,7 @@ class TestAuditLogs:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True
@@ -570,7 +570,7 @@ class TestInviteOnly:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True
@@ -611,7 +611,7 @@ class TestFreeCap:
         if os.environ.get("SKIP_SPOTIFY_PREFETCH"):
             pytest.skip("Skipping due to SKIP_SPOTIFY_PREFETCH")
 
-        os.environ["ANDRE_API_TOKEN"] = "test-secret-token-12345"
+        os.environ["ECHONEST_API_TOKEN"] = "test-secret-token-12345"
         from app import app, CONF
 
         app.config["TESTING"] = True

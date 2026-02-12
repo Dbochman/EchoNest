@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Andre are documented in this file.
+All notable changes to EchoNest are documented in this file.
 
 ---
 

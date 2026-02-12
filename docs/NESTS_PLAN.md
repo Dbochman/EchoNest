@@ -1,4 +1,4 @@
-# Nests — Multi-Room Support for Andre
+# Nests — Multi-Room Support for EchoNest
 
 **Status:** Phases 1-4 Complete, Phase 5 In Progress
 **Author:** Dylan + Claude
@@ -9,7 +9,7 @@
 
 ## Overview
 
-Add the ability to create temporary, independent listening sessions called **Nests** — a nod to Andre's origins at [The Echo Nest](https://en.wikipedia.org/wiki/The_Echo_Nest). Each Nest has its own queue, voting, jams, and Bender. Nests are shareable via short codes and auto-cleanup after inactivity.
+Add the ability to create temporary, independent listening sessions called **Nests** — a nod to EchoNest's origins at [The Echo Nest](https://en.wikipedia.org/wiki/The_Echo_Nest). Each Nest has its own queue, voting, jams, and Bender. Nests are shareable via short codes and auto-cleanup after inactivity.
 
 The current single-queue experience becomes the persistent **Main Nest** (lobby). The domain `echone.st` serves as a short-link for sharing Nest codes.
 
@@ -28,7 +28,7 @@ The current single-queue experience becomes the persistent **Main Nest** (lobby)
 
 ### User Flow
 
-1. Open Andre → auto-join the Main Nest (current experience, unchanged)
+1. Open EchoNest → auto-join the Main Nest (current experience, unchanged)
 2. Click **"Build a Nest"** → modal dialog with optional name and seed track
 3. Share the code or link (`echone.st/X7K2P` or `echone.st/friday-vibes`)
 4. Friends enter code or visit link → join the Nest
@@ -38,7 +38,7 @@ The current single-queue experience becomes the persistent **Main Nest** (lobby)
 
 ### Domain Setup
 
-`echone.st` is the primary domain. Andre is served directly from it via Caddy.
+`echone.st` is the primary domain. EchoNest is served directly from it via Caddy.
 `andre.dylanbochman.com` 301-redirects to `echone.st`. Bare nest codes
 (`echone.st/X7K2P`) and slugs (`echone.st/friday-vibes`) are caught by a Flask
 catch-all route and redirected to `/nest/{CODE}`.

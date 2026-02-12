@@ -1,12 +1,12 @@
-# Andre Cloud Hosting Plan
+# EchoNest Cloud Hosting Plan
 
 ## Overview
 
-This document outlines the plan to deploy Andre to a cloud VPS, making it accessible externally at `andre.dylanbochman.com`.
+This document outlines the plan to deploy EchoNest to a cloud VPS, making it accessible externally at `echone.st`.
 
 **Target**: Simple, low-cost hosting for ~5 concurrent users.
 
-**Playback Model**: Each user connects their own Spotify account and controls playback on their own devices. Andre is the shared queue - users add songs, vote, and jam together, but each person listens through their individual Spotify app.
+**Playback Model**: Each user connects their own Spotify account and controls playback on their own devices. EchoNest is the shared queue - users add songs, vote, and jam together, but each person listens through their individual Spotify app.
 
 ---
 
@@ -14,7 +14,7 @@ This document outlines the plan to deploy Andre to a cloud VPS, making it access
 
 ```
                     ┌─────────────────────────────┐
-                    │   andre.dylanbochman.com    │
+                    │       echone.st             │
                     │      (DNS A record)         │
                     └─────────────┬───────────────┘
                                   │
@@ -29,12 +29,12 @@ This document outlines the plan to deploy Andre to a cloud VPS, making it access
                     │              │              │
                     │  ┌───────────▼───────────┐  │
                     │  │   Docker Compose      │  │
-                    │  │   ├─ andre (Flask)    │  │
+                    │  │   ├─ echonest (Flask)  │  │
                     │  │   ├─ player           │  │
                     │  │   └─ redis            │  │
                     │  └───────────────────────┘  │
                     │                             │
-                    │  Volume: /opt/andre/data    │
+                    │  Volume: /opt/echonest/data    │
                     │   ├─ play_logs/  (REQUIRED) │
                     │   ├─ oauth_creds/           │
                     │   └─ redis/                 │
@@ -102,7 +102,7 @@ Make the codebase production-ready:
 
   ```bash
   # Via DigitalOcean web console or doctl CLI:
-  doctl compute droplet create andre \
+  doctl compute droplet create echonest \
     --image ubuntu-22-04-x64 \
     --size s-1vcpu-1gb \
     --region nyc1 \
@@ -186,7 +186,7 @@ Make the codebase production-ready:
 - [ ] **2.4** Configure DNS
 
   Add A record in your DNS provider:
-  - **Name**: `andre`
+  - **Name**: `echone.st`
   - **Type**: `A`
   - **Value**: `<droplet-ip>`
   - **TTL**: `300` (5 minutes - allows fast rollback)
@@ -194,7 +194,7 @@ Make the codebase production-ready:
   **Verify DNS propagation**:
   ```bash
   # From local machine
-  dig andre.dylanbochman.com +short
+  dig echone.st +short
   # Should return the droplet IP
 
   # Or use online tool: https://dnschecker.org
@@ -217,9 +217,9 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
   # As deploy user
   su - deploy
 
-  mkdir -p /opt/andre
-  cd /opt/andre
-  git clone https://github.com/yourusername/Andre.git .
+  mkdir -p /opt/echonest
+  cd /opt/echonest
+  git clone https://github.com/yourusername/EchoNest.git .
   ```
 
   **Verify**: `ls -la` shows repository files including `docker-compose.yaml`.
@@ -229,34 +229,34 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
   From your local machine:
   ```bash
   # Copy historical play_logs (required for Throwback feature)
-  scp -r play_logs/ deploy@<droplet-ip>:/opt/andre/play_logs/
+  scp -r play_logs/ deploy@<droplet-ip>:/opt/echonest/play_logs/
 
   # Copy oauth_creds (required for OAuth token caching)
-  scp -r oauth_creds/ deploy@<droplet-ip>:/opt/andre/oauth_creds/
+  scp -r oauth_creds/ deploy@<droplet-ip>:/opt/echonest/oauth_creds/
   ```
 
   **Verify on server**:
   ```bash
-  ls -la /opt/andre/play_logs/
+  ls -la /opt/echonest/play_logs/
   # Should show play_log_*.json files (~11,600 plays from Nov 2017 - May 2018)
 
-  ls -la /opt/andre/oauth_creds/
+  ls -la /opt/echonest/oauth_creds/
   # Should show OAuth cache files (or empty dir if fresh install)
   ```
 
   Set permissions:
   ```bash
-  chown -R deploy:deploy /opt/andre/play_logs /opt/andre/oauth_creds
-  chmod -R 755 /opt/andre/play_logs /opt/andre/oauth_creds
+  chown -R deploy:deploy /opt/echonest/play_logs /opt/echonest/oauth_creds
+  chmod -R 755 /opt/echonest/play_logs /opt/echonest/oauth_creds
   ```
 
 - [ ] **3.3** Configure production environment
 
-  Create `.env` file at `/opt/andre/.env`:
+  Create `.env` file at `/opt/echonest/.env`:
   ```bash
-  cat > /opt/andre/.env << 'EOF'
+  cat > /opt/echonest/.env << 'EOF'
   # Core
-  HOSTNAME=andre.dylanbochman.com
+  HOSTNAME=echone.st
   DEBUG=false
   SECRET_KEY=<generate-with: python3 -c "import secrets; print(secrets.token_hex(32))">
 
@@ -280,20 +280,24 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
 
   Secure the file:
   ```bash
-  chmod 600 /opt/andre/.env
+  chmod 600 /opt/echonest/.env
   ```
 
-  **Verify**: `cat /opt/andre/.env` shows all variables populated (no `<placeholders>`).
+  **Verify**: `cat /opt/echonest/.env` shows all variables populated (no `<placeholders>`).
 
 - [ ] **3.4** Configure Caddy
 
   Edit `/etc/caddy/Caddyfile`:
   ```bash
   cat > /etc/caddy/Caddyfile << 'EOF'
-  andre.dylanbochman.com {
+  echone.st {
       reverse_proxy localhost:5001 {
           flush_interval -1
       }
+  }
+
+  andre.dylanbochman.com {
+      redir https://echone.st{uri} permanent
   }
   EOF
   ```
@@ -315,24 +319,24 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
 - [ ] **3.5** Start services
 
   ```bash
-  cd /opt/andre
+  cd /opt/echonest
   docker compose up -d
   ```
 
   **Verify containers running**:
   ```bash
   docker compose ps
-  # Should show: andre, player, redis all "Up"
+  # Should show: echonest, player, redis all "Up"
 
   # Check for errors in logs
-  docker compose logs --tail=50 andre
+  docker compose logs --tail=50 echonest
   docker compose logs --tail=50 player
   docker compose logs --tail=50 redis
   ```
 
   **Verify Redis memory limit**:
   ```bash
-  docker exec andre_redis redis-cli CONFIG GET maxmemory
+  docker exec echonest_redis redis-cli CONFIG GET maxmemory
   # Should return: maxmemory, 134217728 (128MB in bytes)
   ```
 
@@ -346,43 +350,43 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
 
   **Verify HTTPS certificate**:
   ```bash
-  curl -I https://andre.dylanbochman.com
+  curl -I https://echone.st
   # Should return HTTP/2 200 with no certificate errors
 
   # Check certificate details
-  echo | openssl s_client -servername andre.dylanbochman.com -connect andre.dylanbochman.com:443 2>/dev/null | openssl x509 -noout -dates
+  echo | openssl s_client -servername echone.st -connect echone.st:443 2>/dev/null | openssl x509 -noout -dates
   ```
 
 - [ ] **3.7** Update OAuth redirect URIs
 
   **Google Cloud Console** (https://console.cloud.google.com/apis/credentials):
-  - Add authorized redirect URI: `https://andre.dylanbochman.com/authentication/callback`
+  - Add authorized redirect URI: `https://echone.st/authentication/callback`
 
   **Spotify Developer Dashboard** (https://developer.spotify.com/dashboard):
-  - Add redirect URI: `https://andre.dylanbochman.com/authentication/spotify_callback`
+  - Add redirect URI: `https://echone.st/authentication/spotify_callback`
 
   **Verify OAuth** (manual test):
-  1. Open `https://andre.dylanbochman.com` in browser
+  1. Open `https://echone.st` in browser
   2. Click login → should redirect to Google
-  3. After Google auth → should redirect back to Andre (not error)
+  3. After Google auth → should redirect back to EchoNest (not error)
   4. Connect Spotify → should redirect to Spotify
-  5. After Spotify auth → should return to Andre with "Connected" status
+  5. After Spotify auth → should return to EchoNest with "Connected" status
 
 - [ ] **3.8** Run smoke test
 
   ```bash
   # Test health endpoint
-  curl -f https://andre.dylanbochman.com/health
+  curl -f https://echone.st/health
 
   # Test queue endpoint (public)
-  curl -f https://andre.dylanbochman.com/queue/
+  curl -f https://echone.st/queue/
 
   # Test playing endpoint (public)
-  curl -f https://andre.dylanbochman.com/playing/
+  curl -f https://echone.st/playing/
 
   # Test WebSocket connectivity (from local machine with wscat)
   # Install: npm install -g wscat
-  wscat -c "wss://andre.dylanbochman.com/socket/"
+  wscat -c "wss://echone.st/socket/"
   # Should connect without error (may timeout if no auth, but connection works)
   ```
 
@@ -404,7 +408,7 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
 
   Docker restart policies are already in docker-compose.yaml. Verify:
   ```bash
-  docker inspect andre_app --format='{{.HostConfig.RestartPolicy.Name}}'
+  docker inspect echonest_app --format='{{.HostConfig.RestartPolicy.Name}}'
   # Should return: unless-stopped (or always)
   ```
 
@@ -427,7 +431,7 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
 
   Verify log rotation config:
   ```bash
-  docker inspect andre_app --format='{{.HostConfig.LogConfig}}'
+  docker inspect echonest_app --format='{{.HostConfig.LogConfig}}'
   ```
 
 - [ ] **4.3** Set up monitoring
@@ -436,40 +440,40 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
 
   **UptimeRobot** (free tier):
   1. Create account at https://uptimerobot.com
-  2. Add new monitor: `https://andre.dylanbochman.com/health`
+  2. Add new monitor: `https://echone.st/health`
   3. Set check interval: 5 minutes
   4. Enable email alerts
 
 - [ ] **4.4** Backup strategy
 
-  Create backup script at `/opt/andre/backup.sh`:
+  Create backup script at `/opt/echonest/backup.sh`:
   ```bash
   #!/bin/bash
-  BACKUP_DIR="/opt/andre/backups/$(date +%Y%m%d)"
+  BACKUP_DIR="/opt/echonest/backups/$(date +%Y%m%d)"
   mkdir -p "$BACKUP_DIR"
 
   # Backup play_logs
-  cp -r /opt/andre/play_logs "$BACKUP_DIR/"
+  cp -r /opt/echonest/play_logs "$BACKUP_DIR/"
 
   # Backup oauth_creds
-  cp -r /opt/andre/oauth_creds "$BACKUP_DIR/"
+  cp -r /opt/echonest/oauth_creds "$BACKUP_DIR/"
 
   # Backup Redis
-  docker exec andre_redis redis-cli BGSAVE
+  docker exec echonest_redis redis-cli BGSAVE
   sleep 2
-  docker cp andre_redis:/data/dump.rdb "$BACKUP_DIR/"
+  docker cp echonest_redis:/data/dump.rdb "$BACKUP_DIR/"
 
   # Keep only last 7 days
-  find /opt/andre/backups -type d -mtime +7 -exec rm -rf {} +
+  find /opt/echonest/backups -type d -mtime +7 -exec rm -rf {} +
 
   echo "Backup completed: $BACKUP_DIR"
   ```
 
   Add to crontab:
   ```bash
-  chmod +x /opt/andre/backup.sh
+  chmod +x /opt/echonest/backup.sh
   crontab -e
-  # Add: 0 3 * * * /opt/andre/backup.sh >> /var/log/andre-backup.log 2>&1
+  # Add: 0 3 * * * /opt/echonest/backup.sh >> /var/log/echonest-backup.log 2>&1
   ```
 
 ---
@@ -478,11 +482,11 @@ nc -zvw3 <droplet-ip> 443  # HTTPS
 
 ### Production Environment File (.env)
 
-Location: `/opt/andre/.env`
+Location: `/opt/echonest/.env`
 
 ```bash
 # Core
-HOSTNAME=andre.dylanbochman.com
+HOSTNAME=echone.st
 DEBUG=false
 SECRET_KEY=<generate-random-64-char-hex-string>
 
@@ -517,10 +521,14 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 Location: `/etc/caddy/Caddyfile`
 
 ```
-andre.dylanbochman.com {
+echone.st {
     reverse_proxy localhost:5001 {
         flush_interval -1
     }
+}
+
+andre.dylanbochman.com {
+    redir https://echone.st{uri} permanent
 }
 ```
 
@@ -555,7 +563,7 @@ ufw enable
 
 ## Spotify Playback Architecture
 
-Andre uses a **shared queue, individual playback** model:
+EchoNest uses a **shared queue, individual playback** model:
 
 1. **Shared Queue**: All users see the same queue, can add songs, vote, jam, and airhorn
 2. **Individual Playback**: Each user connects their own Spotify Premium account
@@ -576,12 +584,12 @@ If deployment fails:
 ### Quick Rollback (DNS)
 1. Remove or update DNS A record to point elsewhere
 2. DNS TTL is 300 seconds (5 min), so changes propagate quickly
-3. Andre continues running locally during this time
+3. EchoNest continues running locally during this time
 
 ### Full Rollback
 1. Stop services: `docker compose down`
 2. Remove DNS A record
-3. Destroy droplet: `doctl compute droplet delete andre`
+3. Destroy droplet: `doctl compute droplet delete echonest`
 4. No data loss - all data (play_logs, oauth_creds) remains on local machine
 
 ### Data Restore (if needed)
@@ -591,15 +599,15 @@ If you need to restore from backup:
 docker compose down
 
 # Restore play_logs
-cp -r /opt/andre/backups/<date>/play_logs/* /opt/andre/play_logs/
+cp -r /opt/echonest/backups/<date>/play_logs/* /opt/echonest/play_logs/
 
 # Restore oauth_creds
-cp -r /opt/andre/backups/<date>/oauth_creds/* /opt/andre/oauth_creds/
+cp -r /opt/echonest/backups/<date>/oauth_creds/* /opt/echonest/oauth_creds/
 
 # Restore Redis
 docker compose up -d redis
-docker cp /opt/andre/backups/<date>/dump.rdb andre_redis:/data/
-docker exec andre_redis redis-cli DEBUG RELOAD
+docker cp /opt/echonest/backups/<date>/dump.rdb echonest_redis:/data/
+docker exec echonest_redis redis-cli DEBUG RELOAD
 
 # Restart all services
 docker compose up -d
@@ -612,17 +620,17 @@ docker compose up -d
 ### WebSocket not connecting
 1. Check Caddy config has `flush_interval -1`
 2. Check browser console for mixed content (HTTP vs HTTPS)
-3. Verify with: `wscat -c "wss://andre.dylanbochman.com/socket/"`
+3. Verify with: `wscat -c "wss://echone.st/socket/"`
 
 ### OAuth redirect fails
 1. Verify redirect URIs match exactly in Google/Spotify console
 2. Check HOSTNAME env var matches the domain
-3. Check logs: `docker compose logs andre | grep -i oauth`
+3. Check logs: `docker compose logs echonest | grep -i oauth`
 
 ### Redis out of memory
-1. Check memory: `docker exec andre_redis redis-cli INFO memory`
-2. Verify maxmemory: `docker exec andre_redis redis-cli CONFIG GET maxmemory`
-3. Clear if needed: `docker exec andre_redis redis-cli FLUSHALL` (destructive!)
+1. Check memory: `docker exec echonest_redis redis-cli INFO memory`
+2. Verify maxmemory: `docker exec echonest_redis redis-cli CONFIG GET maxmemory`
+3. Clear if needed: `docker exec echonest_redis redis-cli FLUSHALL` (destructive!)
 
 ### Container won't start
 1. Check logs: `docker compose logs <service>`

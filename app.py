@@ -810,7 +810,7 @@ def bounce():
 
 @app.route('/z/', methods=['GET'])
 def z():
-    conn = psycopg2.connect("dbname='andre_database' user='postgres'  host='db'")
+    conn = psycopg2.connect("dbname='echonest_database' user='postgres'  host='db'")
     cur = conn.cursor()
     cur.execute("""SELECT username from userdata""")
     rows  = cur.fetchall()
@@ -1261,7 +1261,7 @@ API_EMAIL = 'openclaw@api'
 def require_api_token(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
-        configured_token = CONF.ANDRE_API_TOKEN
+        configured_token = CONF.ECHONEST_API_TOKEN
         if not configured_token:
             return jsonify(error='API token not configured on server'), 503
 
@@ -1292,7 +1292,7 @@ def require_session_or_api_token(f):
             g.auth_email = email
             return f(*args, **kwargs)
         # Fall back to API token auth
-        configured_token = CONF.ANDRE_API_TOKEN
+        configured_token = CONF.ECHONEST_API_TOKEN
         auth_header = request.headers.get('Authorization', '')
         if configured_token and auth_header.startswith('Bearer '):
             provided_token = auth_header[7:]
@@ -1369,13 +1369,13 @@ SPOTIFY_CONNECT_SCOPE = "streaming user-read-currently-playing user-read-playbac
 
 
 def _get_spotify_client():
-    """Build a Spotify client from the cached OAuth token for ANDRE_SPOTIFY_EMAIL.
+    """Build a Spotify client from the cached OAuth token for ECHONEST_SPOTIFY_EMAIL.
 
     Returns (spotipy.Spotify, None) on success or (None, error_string) on failure.
     """
-    email = CONF.ANDRE_SPOTIFY_EMAIL
+    email = CONF.ECHONEST_SPOTIFY_EMAIL
     if not email:
-        return None, "ANDRE_SPOTIFY_EMAIL not configured"
+        return None, "ECHONEST_SPOTIFY_EMAIL not configured"
 
     try:
         os.makedirs(CONF.OAUTH_CACHE_PATH)

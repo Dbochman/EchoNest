@@ -18,7 +18,7 @@ class TestAPIAuth:
         if os.environ.get('SKIP_SPOTIFY_PREFETCH'):
             pytest.skip('Skipping due to SKIP_SPOTIFY_PREFETCH')
 
-        os.environ['ANDRE_API_TOKEN'] = 'test-secret-token-12345'
+        os.environ['ECHONEST_API_TOKEN'] = 'test-secret-token-12345'
         from app import app, CONF
         app.config['TESTING'] = True
         # Use CONF.HOSTNAME so the host check in before_request passes
@@ -66,11 +66,11 @@ class TestSpotifyAPI:
         if os.environ.get('SKIP_SPOTIFY_PREFETCH'):
             pytest.skip('Skipping due to SKIP_SPOTIFY_PREFETCH')
 
-        os.environ['ANDRE_API_TOKEN'] = 'test-secret-token-12345'
-        # Ensure ANDRE_SPOTIFY_EMAIL is NOT set so we get 503
-        os.environ.pop('ANDRE_SPOTIFY_EMAIL', None)
+        os.environ['ECHONEST_API_TOKEN'] = 'test-secret-token-12345'
+        # Ensure ECHONEST_SPOTIFY_EMAIL is NOT set so we get 503
+        os.environ.pop('ECHONEST_SPOTIFY_EMAIL', None)
         from app import app, CONF
-        CONF.ANDRE_SPOTIFY_EMAIL = None
+        CONF.ECHONEST_SPOTIFY_EMAIL = None
         app.config['TESTING'] = True
         self._host = str(CONF.HOSTNAME) if CONF.HOSTNAME else 'localhost:5000'
         with app.test_client() as client:
@@ -93,12 +93,12 @@ class TestSpotifyAPI:
         assert rv.status_code == 403
 
     def test_503_when_spotify_email_not_set(self, client):
-        """Spotify API should return 503 when ANDRE_SPOTIFY_EMAIL is not configured."""
+        """Spotify API should return 503 when ECHONEST_SPOTIFY_EMAIL is not configured."""
         rv = self._get(client, '/api/spotify/devices',
                        headers={'Authorization': 'Bearer test-secret-token-12345'})
         assert rv.status_code == 503
         data = rv.get_json()
-        assert 'ANDRE_SPOTIFY_EMAIL' in data.get('error', '')
+        assert 'ECHONEST_SPOTIFY_EMAIL' in data.get('error', '')
 
 
 class TestReadEndpoints:
@@ -109,7 +109,7 @@ class TestReadEndpoints:
         if os.environ.get('SKIP_SPOTIFY_PREFETCH'):
             pytest.skip('Skipping due to SKIP_SPOTIFY_PREFETCH')
 
-        os.environ['ANDRE_API_TOKEN'] = 'test-secret-token-12345'
+        os.environ['ECHONEST_API_TOKEN'] = 'test-secret-token-12345'
         from app import app, CONF
         app.config['TESTING'] = True
         self._host = str(CONF.HOSTNAME) if CONF.HOSTNAME else 'localhost:5000'
@@ -168,19 +168,19 @@ class TestAPIWithoutSpotify:
         assert '/api/' in SAFE_PARAM_PATHS
 
     def test_config_env_override_includes_token(self):
-        """Verify ANDRE_API_TOKEN is in the ENV_OVERRIDES list."""
+        """Verify ECHONEST_API_TOKEN is in the ENV_OVERRIDES list."""
         try:
             from config import ENV_OVERRIDES
         except (ImportError, ModuleNotFoundError) as e:
             pytest.skip(f'Cannot import config: {e}')
 
-        assert 'ANDRE_API_TOKEN' in ENV_OVERRIDES
+        assert 'ECHONEST_API_TOKEN' in ENV_OVERRIDES
 
     def test_config_env_override_includes_spotify_email(self):
-        """Verify ANDRE_SPOTIFY_EMAIL is in the ENV_OVERRIDES list."""
+        """Verify ECHONEST_SPOTIFY_EMAIL is in the ENV_OVERRIDES list."""
         try:
             from config import ENV_OVERRIDES
         except (ImportError, ModuleNotFoundError) as e:
             pytest.skip(f'Cannot import config: {e}')
 
-        assert 'ANDRE_SPOTIFY_EMAIL' in ENV_OVERRIDES
+        assert 'ECHONEST_SPOTIFY_EMAIL' in ENV_OVERRIDES

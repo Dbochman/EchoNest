@@ -140,5 +140,5 @@ For async handoffs, use `docs/NESTS_HANDOFF_TEMPLATE.md`.
 ## D017: echone.st as primary domain (not redirect)
 **Date:** 2026-02-10
 **Context:** Originally planned to use Cloudflare page rules to redirect `echone.st/{code}` → `andre.dylanbochman.com/nest/{code}`. The user decided to make echone.st the primary domain instead.
-**Decision:** Serve Andre directly from echone.st via Caddy. 301-redirect `andre.dylanbochman.com` and `www.echone.st` to `echone.st`. Handle bare nest codes (`echone.st/X7K2P`) with a Flask catch-all route that matches 5-char codes from CODE_CHARS and redirects to `/nest/{code}`. Remove Cloudflare page rules.
+**Decision:** Serve EchoNest directly from echone.st via Caddy. 301-redirect `andre.dylanbochman.com` and `www.echone.st` to `echone.st`. Handle bare nest codes (`echone.st/X7K2P`) with a Flask catch-all route that matches 5-char codes from CODE_CHARS and redirects to `/nest/{code}`. Remove Cloudflare page rules.
 **Rationale:** Serving directly is cleaner than a redirect chain. Users see `echone.st` in the URL bar. The catch-all route uses a strict regex matching only valid nest code characters, so it won't interfere with other routes. The route is registered last in Flask to avoid shadowing.

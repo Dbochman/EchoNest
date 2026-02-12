@@ -1,28 +1,28 @@
-# Andre - Docker Compose with Security Hardening
+# EchoNest - Docker Compose with Security Hardening
 # See: https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html
 
 networks:
   # External network - allows internet access (needed for Spotify/OAuth APIs)
-  andre_network:
+  echonest_network:
     driver: bridge
     internal: false
 
   # Internal network - no internet access (for Redis isolation)
-  andre_internal:
+  echonest_internal:
     driver: bridge
     internal: true
 
 services:
   redis:
     image: redis:7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
-    container_name: andre_redis
+    container_name: echonest_redis
     # Security: password auth, protected mode
     # Note: ACL-based command restrictions require redis.conf file mount (see SECURITY.md)
     # Current config uses requirepass for authentication
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-changeme} --protected-mode yes
     # Redis only on internal network - no internet access
     networks:
-      - andre_internal
+      - echonest_internal
     expose:
       - "6379"
     volumes:
@@ -59,9 +59,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  andre:
+  echonest:
     build: .
-    container_name: andre_app
+    container_name: echonest_app
     # Security: run as non-root user
     user: "1000:1000"
     depends_on:
@@ -69,8 +69,8 @@ services:
         condition: service_healthy
     # Both networks: internal for Redis, external for Spotify API
     networks:
-      - andre_network
-      - andre_internal
+      - echonest_network
+      - echonest_internal
     ports:
       - "5001:5000"
     env_file:
@@ -117,15 +117,15 @@ services:
 
   player:
     build: .
-    container_name: andre_player
+    container_name: echonest_player
     # Security: run as non-root user
     user: "1000:1000"
     depends_on:
-      - andre
+      - echonest
     # Both networks: internal for Redis, external for Spotify API
     networks:
-      - andre_network
-      - andre_internal
+      - echonest_network
+      - echonest_internal
     env_file:
       - .env
     environment:
@@ -165,11 +165,11 @@ services:
   # PostgreSQL is optional - uncomment if you need it for user data
   # db:
   #   image: postgres:15-alpine
-  #   container_name: andre_postgres
+  #   container_name: echonest_postgres
   #   ports:
   #     - "5432:5432"
   #   environment:
-  #     POSTGRES_DB: andre_database
+  #     POSTGRES_DB: echonest_database
   #     POSTGRES_USER: postgres
   #     POSTGRES_PASSWORD: postgres
   #   volumes:

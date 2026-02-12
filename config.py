@@ -32,9 +32,9 @@ ENV_OVERRIDES = [
     'SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET',
     'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
     'DEV_AUTH_EMAIL', 'YT_API_KEY', 'SOUNDCLOUD_CLIENT_ID', 'SOUNDCLOUD_CLIENT_SECRET',
-    'ANDRE_HOSTNAME',  # Use ANDRE_HOSTNAME instead to avoid Docker conflict
-    'ANDRE_API_TOKEN',
-    'ANDRE_SPOTIFY_EMAIL',
+    'ECHONEST_HOSTNAME',  # Use ECHONEST_HOSTNAME instead to avoid Docker conflict
+    'ECHONEST_API_TOKEN',
+    'ECHONEST_SPOTIFY_EMAIL',
     'NESTS_ENABLED',
 ]
 
@@ -69,8 +69,8 @@ def __read_conf(*files):
                     env_val = int(env_val)
                 except ValueError:
                     pass
-            # Map ANDRE_HOSTNAME to HOSTNAME
-            config_key = 'HOSTNAME' if key == 'ANDRE_HOSTNAME' else key
+            # Map ECHONEST_HOSTNAME to HOSTNAME
+            config_key = 'HOSTNAME' if key == 'ECHONEST_HOSTNAME' else key
             setattr(CONF, config_key, env_val)
             logger.debug('Override from env: {0}={1}'.format(config_key, env_val))
 

@@ -13,8 +13,8 @@ Commit changes, update changelog, and deploy to production.
 
 ## Deployment Details
 
-- **Server**: deploy@192.241.153.83
-- **Path**: /opt/andre
+- **Server**: deploy@andre.dylanbochman.com
+- **Path**: /opt/echonest
 - **Method**: rsync + docker compose rebuild
 
 ### Rsync Command
@@ -22,17 +22,17 @@ Commit changes, update changelog, and deploy to production.
 rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
   --exclude='.env' --exclude='local_config.yaml' --exclude='.cache' \
   --exclude='node_modules' \
-  /Users/dylanbochman/repos/Andre/ deploy@192.241.153.83:/opt/andre/
+  /Users/dylanbochman/repos/EchoNest/ deploy@andre.dylanbochman.com:/opt/echonest/
 ```
 
 ### Rebuild Command
 ```bash
-ssh deploy@192.241.153.83 "cd /opt/andre && docker compose up -d --build"
+ssh deploy@andre.dylanbochman.com "cd /opt/echonest && docker compose up -d --build"
 ```
 
 ### Verify Deployment
 ```bash
-curl -s -o /dev/null -w "%{http_code}" https://andre.dylanbochman.com/health
+curl -s -o /dev/null -w "%{http_code}" https://echone.st/health
 ```
 
 ## Commit Message Style
@@ -41,7 +41,7 @@ Follow the existing repo convention:
 - Imperative mood ("Fix bug" not "Fixed bug")
 - First line is summary (under 72 chars)
 - Blank line then details if needed
-- End with `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>`
+- End with `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`
 
 ## Changelog Format
 

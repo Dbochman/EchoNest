@@ -1,4 +1,4 @@
-# Andre - Collaborative Music Queue System
+# EchoNest - Collaborative Music Queue System
 # Python 3 Docker image with security hardening
 
 # Pin to specific version with digest for reproducibility
@@ -19,18 +19,18 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create non-root user for security
-RUN groupadd --gid 1000 andre && \
-    useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home andre
+RUN groupadd --gid 1000 echonest && \
+    useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home echonest
 
 # Copy application code
 COPY . .
 
 # Create directories for logs and oauth, set ownership
 RUN mkdir -p /app/play_logs /app/oauth_creds && \
-    chown -R andre:andre /app
+    chown -R echonest:echonest /app
 
 # Switch to non-root user
-USER andre
+USER echonest
 
 # Expose the application port
 EXPOSE 5000

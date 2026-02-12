@@ -23,13 +23,13 @@ function changeColors() {
     document.documentElement.style.setProperty('--accent-hover-rgb', theme.hoverRgb);
     // Save preference
     try {
-        localStorage.setItem('andre-color-theme', currentColorIndex);
+        localStorage.setItem('echonest-color-theme', currentColorIndex);
     } catch(e) {}
 }
 
 function loadSavedColorTheme() {
     try {
-        var saved = localStorage.getItem('andre-color-theme');
+        var saved = localStorage.getItem('echonest-color-theme');
         if (saved !== null) {
             currentColorIndex = parseInt(saved, 10);
             if (currentColorIndex >= 0 && currentColorIndex < COLOR_THEMES.length) {
@@ -730,7 +730,7 @@ socket.on('now_playing_update', function(data){
     if (playerpaused) {
         $('#pause-button').text('unpause everything');
         $('#airhorn-unpause-btn').show();
-        document.title = "PAUSED | Andre";
+        document.title = "PAUSED | EchoNest";
     } else {
         $('#pause-button').text('pause everything');
         $('#airhorn-unpause-btn').hide();
@@ -747,7 +747,7 @@ socket.on('now_playing_update', function(data){
         now_playing.set(data);
         if (!playerpaused) {
             var display_artist = data.secondary_text || data.artist;
-            document.title = data.title + " - " + display_artist + " | Andre";
+            document.title = data.title + " - " + display_artist + " | EchoNest";
         }
     } else if (playerpaused) {
         // Paused with no title data - trigger render anyway
@@ -757,7 +757,7 @@ socket.on('now_playing_update', function(data){
         var title = now_playing.get('title');
         var artist = now_playing.get('secondary_text') || now_playing.get('artist');
         if (title && artist) {
-            document.title = title + " - " + artist + " | Andre";
+            document.title = title + " - " + artist + " | EchoNest";
         }
     }
 

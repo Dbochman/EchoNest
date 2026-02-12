@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bender is Andre's auto-fill engine. When the queue runs low, Bender picks songs using a weighted strategy rotation and adds them to the queue. The UI shows a "preview" of the next Bender pick at the bottom of the queue, with controls to approve (Queue), reject (Filter), or open in Spotify.
+Bender is EchoNest's auto-fill engine. When the queue runs low, Bender picks songs using a weighted strategy rotation and adds them to the queue. The UI shows a "preview" of the next Bender pick at the bottom of the queue, with controls to approve (Queue), reject (Filter), or open in Spotify.
 
 ## Strategy Rotation
 

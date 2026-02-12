@@ -27,7 +27,7 @@ Improve the user experience by automatically resuming Spotify playback when:
 | **Album art** | Current song's album | Current song's album with pause icon overlay |
 | **Person image** | User who queued song | `theechonestcom.png` (Bender headshot) |
 | **Airhorn buttons** | Visible | Visible, with "unpause everything" button above |
-| **Browser tab** | "Song - Artist \| Andre" | "PAUSED \| Andre" |
+| **Browser tab** | "Song - Artist \| EchoNest" | "PAUSED \| EchoNest" |
 
 ---
 
@@ -153,7 +153,7 @@ function do_airhorn(){
 The `resume_spotify_if_needed()` helper checks:
 1. `auth_token` exists
 2. `is_player` is true (this browser is the active player)
-3. `playerpaused` is false (Andre is not paused)
+3. `playerpaused` is false (EchoNest is not paused)
 4. `now_playing.get('src')` is 'spotify' (not YouTube/SoundCloud)
 
 This prevents:
@@ -182,7 +182,7 @@ No manual Spotify API call needed - `fix_player` handles it.
    - Album art shows current song with pause icon overlay
    - Person image shows Bender headshot
    - "unpause everything" button visible above airhorn buttons
-   - Browser tab shows "PAUSED | Andre"
+   - Browser tab shows "PAUSED | EchoNest"
 4. Click "unpause everything" - verify normal display returns
 
 ### Spotify Auto-Resume

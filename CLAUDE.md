@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Andre is a collaborative music queue system for offices and parties. Users share a queue where they can search for songs (Spotify), add them, vote to reorder, and trigger airhorns. The app uses WebSockets for real-time updates. "Bender mode" auto-fills the queue with recommendations when it runs low.
+EchoNest is a collaborative music queue system for offices and parties. Users share a queue where they can search for songs (Spotify), add them, vote to reorder, and trigger airhorns. The app uses WebSockets for real-time updates. "Bender mode" auto-fills the queue with recommendations when it runs low.
 
 ## Commands
 
@@ -52,12 +52,12 @@ Copy `config.example.yaml` to `local_config.yaml` and fill in OAuth credentials.
 ### Services (Docker Compose)
 
 ```
-andre (Flask app) → Redis ← player (master_player.py)
+echonest (Flask app) → Redis ← player (master_player.py)
                       ↓
                   PostgreSQL (optional, user data)
 ```
 
-- `andre` - Web server on port 5001 (maps to 5000 internally)
+- `echonest` - Web server on port 5001 (maps to 5000 internally)
 - `player` - Runs `master_player.py` for playback timing
 - `redis` - Primary data store for queue, votes, sessions
 - `db` - PostgreSQL (optional)
@@ -89,8 +89,8 @@ Backbone.js + jQuery served as static files. Main logic in `static/js/app.js`. N
 - Public endpoints defined in `SAFE_PATHS` and `SAFE_PARAM_PATHS` lists in `app.py`
 - REST API endpoints under `/api/` use `@require_api_token` decorator with `secrets.compare_digest` for constant-time token comparison
 - `/api/` is in `SAFE_PARAM_PATHS` (bypasses session auth); token auth handled by decorator
-- Config: set `ANDRE_API_TOKEN` via environment variable or yaml config
-- Spotify Connect endpoints (`/api/spotify/*`) use the same Bearer token auth; require `ANDRE_SPOTIFY_EMAIL` to be set and the corresponding user to have completed Spotify OAuth via the browser
+- Config: set `ECHONEST_API_TOKEN` via environment variable or yaml config
+- Spotify Connect endpoints (`/api/spotify/*`) use the same Bearer token auth; require `ECHONEST_SPOTIFY_EMAIL` to be set and the corresponding user to have completed Spotify OAuth via the browser
 - Read endpoints: `GET /api/queue` (full metadata including vote, jam, comments, duration, score), `GET /api/playing` (now-playing with server timestamp), `GET /api/events` (SSE stream)
 
 ### Redis Data
@@ -101,7 +101,7 @@ Backbone.js + jQuery served as static files. Main logic in `static/js/app.js`. N
 Newer spotipy versions return dict from `get_access_token()`. Code handles both string and dict formats.
 
 ### Spotify Connect (Device Control)
-Server-side Spotify playback control via REST API. The `_get_spotify_client()` helper loads a cached OAuth token for `ANDRE_SPOTIFY_EMAIL` and returns a spotipy client. Endpoints: `/api/spotify/devices`, `/api/spotify/transfer`, `/api/spotify/status`. Requires OAuth scope `user-read-playback-state user-modify-playback-state` (added to all SpotifyOAuth constructors).
+Server-side Spotify playback control via REST API. The `_get_spotify_client()` helper loads a cached OAuth token for `ECHONEST_SPOTIFY_EMAIL` and returns a spotipy client. Endpoints: `/api/spotify/devices`, `/api/spotify/transfer`, `/api/spotify/status`. Requires OAuth scope `user-read-playback-state user-modify-playback-state` (added to all SpotifyOAuth constructors).
 
 ## Nests Feature (In Progress)
 

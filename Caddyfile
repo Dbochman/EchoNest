@@ -1,5 +1,6 @@
 # Production Caddyfile for /etc/caddy/Caddyfile
 # Auto-HTTPS via Let's Encrypt
+# andre.dylanbochman.com redirects to echone.st (old domain)
 
 echone.st {
 	reverse_proxy localhost:5001 {

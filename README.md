@@ -1,8 +1,8 @@
-# Andre
+# EchoNest
 
 A collaborative music queue system for offices and parties. Users can search for songs, add them to a shared queue, vote on songs, and enjoy features like airhorns and "bender mode" (auto-fill).
 
-**Live at: https://andre.dylanbochman.com**
+**Live at: https://echone.st**
 
 ## Features
 
@@ -18,18 +18,18 @@ A collaborative music queue system for offices and parties. Users can search for
 
 ## How It Works
 
-Andre is a **shared queue, individual playback** system:
+EchoNest is a **shared queue, individual playback** system:
 
 1. Everyone sees the same queue and can add songs, vote, and jam
 2. Each user connects their own Spotify Premium account
-3. Users play along on their own devices - Andre is the DJ, not the speaker
+3. Users play along on their own devices - EchoNest is the DJ, not the speaker
 
 ## Quick Start (Docker)
 
 ```bash
 # Clone the repo
-git clone https://github.com/Dbochman/andre.git
-cd andre
+git clone https://github.com/Dbochman/EchoNest.git
+cd EchoNest
 
 # Copy and configure
 cp config.example.yaml local_config.yaml
@@ -130,7 +130,7 @@ The live instance runs on a $6/month DigitalOcean droplet with:
 ## Architecture
 
 ```
-┌─────────────────────────────────────┐
+┌─────────────────────────────────┐
 │           Web Browser               │
 │  (Backbone.js + WebSocket client)   │
 └───────────────┬─────────────────────┘
@@ -159,11 +159,11 @@ The live instance runs on a $6/month DigitalOcean droplet with:
 
 ## History
 
-Andre has its roots in **Prosecco**, an internal tool originally developed at [The Echo Nest](https://en.wikipedia.org/wiki/The_Echo_Nest) in Somerville, MA. The name "Prosecco" was chosen as a more appealing alternative to "dogfooding" - the practice of using your own product internally. In this case, it was used to test and refine The Echo Nest's music recommendation algorithms in a real-world office environment.
+EchoNest has its roots in **Prosecco**, an internal tool originally developed at [The Echo Nest](https://en.wikipedia.org/wiki/The_Echo_Nest) in Somerville, MA. The name "Prosecco" was chosen as a more appealing alternative to "dogfooding" - the practice of using your own product internally. In this case, it was used to test and refine The Echo Nest's music recommendation algorithms in a real-world office environment.
 
 After Spotify acquired The Echo Nest in 2014, Prosecco was forked and rebranded as **Andre** for use in Spotify's offices. The system continued to evolve, and was later forked again and rebranded as **Highlife** for other internal deployments.
 
-This repository represents the Andre branch, which was resurrected from a 2018 snapshot and modernized to Python 3 in 2024-2026. The historical play logs from 2017-2018 power the "Throwback" feature, which suggests songs that were played on the same day of the week years ago.
+This repository represents the EchoNest branch, which was resurrected from a 2018 snapshot and modernized to Python 3 in 2024-2026. The historical play logs from 2017-2018 power the "Throwback" feature, which suggests songs that were played on the same day of the week years ago.
 
 ## Changelog
 See `docs/CHANGELOG.md` for the resurrection change summary and testing notes.

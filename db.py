@@ -1836,7 +1836,7 @@ class DB(object):
         passwd = ''.join(x.title() for x in words[:2])
         self._r.hset(self._key('MISC|guest-login-expire'), email, pickle_dump_b64(expires))
         self._r.hset(self._key('MISC|guest-login'), email, passwd)
-        self.send_email(email, "Welcome to Andre!",
+        self.send_email(email, "Welcome to EchoNest!",
                         render_template('welcome_email.txt',
                             expires=expires, email=email,
                             passwd=passwd))

@@ -7,7 +7,7 @@ template:
   type: pythonBackend
   pythonBackend:
     gcpProject: spotify-prosecco
-    serviceInfo: service-info-andre.yaml
+    serviceInfo: service-info-echonest.yaml
 
 notifications:
   - ref: refs/heads/master
