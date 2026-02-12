@@ -886,18 +886,21 @@ def spotify_connect():
 
 @app.route('/spotify_connect/authorize')
 def spotify_authorize():
-    """Redirect to Spotify OAuth — used by the 'connect spotify' button."""
+    """Delete cached Spotify token and redirect to OAuth for fresh auth."""
     email = session.get('email')
     if not email:
         return redirect('/login/')
+    cache_path = "%s/%s" % (CONF.OAUTH_CACHE_PATH, email)
+    # Remove stale token so user always gets a fresh OAuth flow
+    try:
+        os.remove(cache_path)
+    except OSError:
+        pass
     auth = spotipy.oauth2.SpotifyOAuth(
         CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
         "prosecco:%s" % email,
         scope="streaming user-read-currently-playing user-read-playback-state user-modify-playback-state",
-        cache_path="%s/%s" % (CONF.OAUTH_CACHE_PATH, email))
-    token = auth.get_cached_token()
-    if token:
-        return redirect('/')
+        cache_path=cache_path)
     return redirect(auth.get_authorize_url())
 
 
