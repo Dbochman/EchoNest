@@ -468,23 +468,26 @@ background-position: center center;
     border-bottom: 1px solid rgba(0, 0, 0, 0.4);
 }
 
-.nest-listener-section {
-    position: relative;
-    border-bottom: none;
-    border-top: 1px solid rgba(0, 0, 0, 0.4);
+.nest-name-section {
     justify-content: center;
 }
 
 .nest-name {
     font-size: 20px;
-    font-weight: 700;
+    font-weight: 400;
     color: var(--accent-color);
     white-space: nowrap;
 }
+.nest-name strong {
+    font-weight: 700;
+}
+
+.nest-listener-bar {
+    text-align: right;
+    padding: 6px 20px;
+}
 
 .nest-listener-count {
-    position: absolute;
-    right: 20px;
     font-size: 13px;
     color: rgba(var(--accent-color-rgb), 0.6);
     white-space: nowrap;
