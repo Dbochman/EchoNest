@@ -1562,7 +1562,14 @@ class DB(object):
 
                     fillInfo['playlist_src'] = True
                     fillInfo['dm_buttons'] = False
-                    fillInfo['jam'] = []
+
+                    # Show original queuer as a throwback jam in the preview
+                    preview = self._r.hgetall(self._key('BENDER|next-preview'))
+                    original_user = preview.get('original_user', '') if preview else ''
+                    if original_user:
+                        fillInfo['jam'] = [{'user': original_user, 'throwback': True}]
+                    else:
+                        fillInfo['jam'] = []
                     return fillInfo
                 except Exception:
                     logger.error('song not available: %s', track_uri)

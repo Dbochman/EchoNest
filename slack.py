@@ -108,25 +108,26 @@ def notify_now_playing(song):
     title_display = f"<{track_link}|{title}>" if track_link else f"*{title}*"
     artist_display = f"<{artist_link}|{artist}>" if artist_link else f"*{artist}*"
 
+    big_img = song.get('big_img', '') or img
+
     text = f"\U0001f3b5 Now Playing: {title} by {artist}\nAdded by {user}"
 
-    elements = [
-        {
+    block = {
+        'type': 'section',
+        'text': {
             'type': 'mrkdwn',
-            'text': f"\U0001f3b5 Now Playing: *{title_display}* by *{artist_display}* \u2014 Added by {user}",
+            'text': f"\U0001f3b5 Now Playing: *{title_display}* by *{artist_display}*\nAdded by {user}",
         },
-    ]
+    }
 
-    if img:
-        elements.insert(0, {
+    if big_img:
+        block['accessory'] = {
             'type': 'image',
-            'image_url': img,
+            'image_url': big_img,
             'alt_text': f"{title} album art",
-        })
+        }
 
-    blocks = [{'type': 'context', 'elements': elements}]
-
-    post(text, blocks=blocks)
+    post(text, blocks=[block])
 
 
 def notify_airhorn(user, airhorn_name, song_title, song_artist):
