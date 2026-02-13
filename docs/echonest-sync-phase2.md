@@ -19,7 +19,8 @@ echonest-sync/
 │       ├── config.py             # Phase 1 (enhanced with keyring + config dir)
 │       ├── tray_mac.py           # macOS tray app (rumps)
 │       ├── tray_win.py           # Windows tray app (pystray + pillow)
-│       ├── onboarding.py         # tkinter setup wizard
+│       ├── app.py                # Launcher: keyring check → onboarding subprocess → tray
+│       ├── onboarding.py         # tkinter setup wizard (runs as separate process)
 │       ├── ipc.py                # Thread-safe command/event channel
 │       └── autostart.py          # LaunchAgent / Startup folder management
 ├── resources/
@@ -82,9 +83,13 @@ Flow:
 3. On success: store token via keyring (see Security), show "Connected!", close after 2s
 4. On failure: show error inline ("Invalid code" / "Server unreachable"), stay open
 5. Detect Spotify: if not running, show "Spotify not detected — start it for audio sync" (non-blocking warning, not a gate)
-6. On success: start engine, minimize to tray
+6. On success: exit process with code 0; parent process reads token from keyring, starts tray app
 
 Shown on first launch (no config found) or after "Forget Server".
+
+**Event loop isolation**: Onboarding runs as a **separate subprocess** (`subprocess.run([sys.executable, "-m", "echonest_sync.onboarding"])`), not a thread. This avoids conflicts between tkinter's event loop and rumps/pystray's Cocoa/Win32 run loop — both require the main thread. The onboarding process writes to keyring and exits; the parent process then starts the tray app with exclusive main-thread ownership.
+
+"Forget Server" follows the same pattern: tray app clears keyring, stops the engine, then re-launches itself (which hits the "no token" path and spawns onboarding).
 
 ## 3. IPC Channel (`ipc.py`)
 
@@ -138,7 +143,10 @@ def _check_user_override(self):
     if not self.current_track_uri:
         return
     local_track = self.player.get_current_track()
-    if local_track and local_track != self.current_track_uri:
+    if not local_track:
+        # Player can't report current track (e.g. WindowsPlayer) — skip detection
+        return
+    if local_track != self.current_track_uri:
         self._override_count += 1
         if self._override_count >= 2:  # 10s of mismatch
             self.channel.emit('user_override', track=local_track)
@@ -146,6 +154,8 @@ def _check_user_override(self):
     else:
         self._override_count = 0
 ```
+
+**Windows limitation**: `WindowsPlayer.get_current_track()` returns `None`, so manual playback detection is silently disabled. This is acceptable — Windows already lacks seek support, so the sync experience is best-effort. Documented in README under "Platform Support".
 
 ### 4c. Spotify Process Watching
 
