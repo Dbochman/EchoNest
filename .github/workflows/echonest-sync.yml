@@ -33,7 +33,13 @@ jobs:
 
       - name: Install dependencies
         working-directory: echonest-sync
-        run: pip install -e ".[mac]" pytest
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            pip install -e ".[mac]" pytest
+          else
+            pip install -e . pytest
+          fi
+        shell: bash
 
       - name: Run tests
         working-directory: echonest-sync
