@@ -611,7 +611,8 @@ class DB(object):
     def _clear_all_bender_caches(self):
         """Delete all BENDER| cache keys."""
         keys = [self._key(k) for k in self._STRATEGY_CACHE_KEYS.values()] + [
-            self._key('BENDER|seed-info'), self._key('BENDER|throwback-users'), self._key('BENDER|next-preview'),
+            self._key('BENDER|seed-info'), self._key('BENDER|throwback-users'),
+            self._key('BENDER|throwback-jam-pending'), self._key('BENDER|next-preview'),
         ]
         self._r.delete(*keys)
 
@@ -668,18 +669,22 @@ class DB(object):
                     tried.add(strategy)
                     continue
 
-            # Determine user
+            # For throwbacks, store the original queuer for jamming but
+            # credit the song to Bender.
+            original_user = ''
             if strategy == 'throwback':
-                user = self._r.hget(self._key('BENDER|throwback-users'), track_uri) or 'the@echonest.com'
-            else:
-                user = 'the@echonest.com'
+                original_user = self._r.hget(self._key('BENDER|throwback-users'), track_uri) or ''
+            user = 'the@echonest.com'
 
             # Store preview
-            self._r.hset(self._key('BENDER|next-preview'), mapping={
+            preview_data = {
                 'trackid': track_uri,
                 'user': user,
                 'strategy': strategy,
-            })
+            }
+            if original_user:
+                preview_data['original_user'] = original_user
+            self._r.hset(self._key('BENDER|next-preview'), mapping=preview_data)
             return track_uri, user, strategy
 
         return None, None, None
@@ -709,7 +714,12 @@ class DB(object):
             try:
                 user, trackid = self.get_fill_song()
                 if user and trackid:
-                    self.add_spotify_song(user, trackid, scrobble=False)
+                    new_id = self.add_spotify_song(user, trackid, scrobble=False)
+                    # Auto-jam throwback songs with the original queuer
+                    original = self._r.hget(self._key('BENDER|throwback-jam-pending'), trackid)
+                    if original and new_id:
+                        self.add_jam(self._key('QUEUEJAM|{0}'.format(new_id)), original)
+                        self._r.hdel(self._key('BENDER|throwback-jam-pending'), trackid)
                     added += 1
                 else:
                     break
@@ -787,20 +797,24 @@ class DB(object):
             if self.nest_id == "main":
                 track = self._r.lpop(self._key('BENDER|cache:throwback'))
                 if track:
-                    user = self._r.hget(self._key('BENDER|throwback-users'), track) or 'the@echonest.com'
+                    original_user = self._r.hget(self._key('BENDER|throwback-users'), track) or ''
                     self._r.hdel(self._key('BENDER|throwback-users'), track)
+                    if original_user:
+                        self._r.hset(self._key('BENDER|throwback-jam-pending'), track, original_user)
                     self._r.set(self._key('MISC|last-bender-track'), track)
-                    logger.info("get_fill_song: strategy=throwback, track=%s, user=%s", track, user)
-                    return user, track
+                    logger.info("get_fill_song: strategy=throwback, track=%s, original_user=%s", track, original_user)
+                    return 'the@echonest.com', track
                 # Try to fill throwback cache
                 if self._fill_throwback_cache() > 0:
                     track = self._r.lpop(self._key('BENDER|cache:throwback'))
                     if track:
-                        user = self._r.hget(self._key('BENDER|throwback-users'), track) or 'the@echonest.com'
+                        original_user = self._r.hget(self._key('BENDER|throwback-users'), track) or ''
                         self._r.hdel(self._key('BENDER|throwback-users'), track)
+                        if original_user:
+                            self._r.hset(self._key('BENDER|throwback-jam-pending'), track, original_user)
                         self._r.set(self._key('MISC|last-bender-track'), track)
-                        logger.info("get_fill_song: strategy=throwback, track=%s, user=%s", track, user)
-                        return user, track
+                        logger.info("get_fill_song: strategy=throwback, track=%s, original_user=%s", track, original_user)
+                        return 'the@echonest.com', track
             return None, None
 
         seed_info = self._get_seed_info()
@@ -836,12 +850,14 @@ class DB(object):
                 tried.add(strategy)
                 continue
 
-            # Determine user
+            # Determine user — throwback songs are credited to Bender,
+            # with the original queuer added as a jam after insertion.
             if strategy == 'throwback':
-                user = self._r.hget(self._key('BENDER|throwback-users'), track) or 'the@echonest.com'
+                original_user = self._r.hget(self._key('BENDER|throwback-users'), track) or ''
                 self._r.hdel(self._key('BENDER|throwback-users'), track)
-            else:
-                user = 'the@echonest.com'
+                if original_user:
+                    self._r.hset(self._key('BENDER|throwback-jam-pending'), track, original_user)
+            user = 'the@echonest.com'
 
             self._r.set(self._key('MISC|last-bender-track'), track)
             logger.info("get_fill_song: strategy=%s, track=%s, user=%s", strategy, track, user)
@@ -1428,13 +1444,17 @@ class DB(object):
         if cache_key:
             self._r.lpop(cache_key)
 
-        original_user = preview.get('user', 'the@echonest.com')
+        original_user = preview.get('original_user', '')
         if strategy == 'throwback':
             self._r.hdel(self._key('BENDER|throwback-users'), trackId)
+            self._r.hdel(self._key('BENDER|throwback-jam-pending'), trackId)
 
         self._r.delete(self._key('BENDER|next-preview'))
         newId = self.add_spotify_song(userid, trackId)
-        self.jam(newId, original_user)
+        # Jam the queuer and the original throwback user (if any)
+        self.jam(newId, userid)
+        if original_user and original_user != userid:
+            self.add_jam(self._key('QUEUEJAM|{0}'.format(newId)), original_user)
 
     def benderfilter(self, trackId, userid):
         """Filter a Bender preview song and rotate to the next one."""
@@ -1522,12 +1542,11 @@ class DB(object):
                     title = fillInfo['title']
                     fillInfo['title'] = fillInfo['artist'] + " : " + title
 
+                    fillInfo['name'] = 'Benderbot'
+                    fillInfo['user'] = 'the@echonest.com'
+
                     if strategy == 'throwback':
-                        fillInfo['name'] = user.split('@')[0] + " (throwback)"
-                        fillInfo['user'] = user
-                    else:
-                        fillInfo['name'] = 'Benderbot'
-                        fillInfo['user'] = 'the@echonest.com'
+                        fillInfo['name'] = 'Benderbot (throwback)'
 
                     fillInfo['playlist_src'] = True
                     fillInfo['dm_buttons'] = False
