@@ -92,3 +92,7 @@ ECHONEST_API_TOKEN: ""
 # Email of Spotify account used for device control via REST API
 # Must have completed Spotify OAuth via the web UI first
 ECHONEST_SPOTIFY_EMAIL: ""
+
+# Slack Incoming Webhook URL for deploy notifications and now-playing feed
+# Create at: https://api.slack.com/messaging/webhooks
+SLACK_WEBHOOK_URL: ""

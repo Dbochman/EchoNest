@@ -52,6 +52,7 @@ Copy `config.example.yaml` to `local_config.yaml` and fill in OAuth credentials.
 - **nests.py** - `NestManager` class, nest lifecycle helpers (`should_delete_nest`, `pubsub_channel`, etc.)
 - **templates/spotify_prompt.html** - Spotify connect interstitial shown to new users after Google sign-in.
 - **templates/stats.html** - Public analytics dashboard at `/stats`.
+- **templates/help.html** - Help page at `/help` with Slack invite and rendered `GETTING_STARTED.md`. Opened in new tab from Other menu; close button uses `window.close()`.
 
 ### Services (Docker Compose)
 

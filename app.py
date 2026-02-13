@@ -28,6 +28,7 @@ from config import CONF
 from db import DB, is_spotify_rate_limited, set_spotify_rate_limit, handle_spotify_exception
 from nests import pubsub_channel, NestManager, refresh_member_ttl, member_key, members_key
 import analytics
+import slack
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -45,6 +46,9 @@ app.url_map.strict_slashes = False
 #auth = GoogleAuth(app)
 
 print(CONF)
+
+# Notify Slack on container start (every deploy rebuilds the container)
+slack.notify_deploy()
 
 def _get_authenticated_email():
     """Get authenticated email from session or dev bypass."""
