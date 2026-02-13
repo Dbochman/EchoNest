@@ -27,7 +27,7 @@ def _resource_path(name):
 class EchoNestSync(rumps.App):
     def __init__(self, channel, restart_callback=None):
         super().__init__("EchoNest", icon=_resource_path("icon_grey.png"),
-                         template=True)
+                         template=False, quit_button=None)
         self.channel = channel
         self.restart_callback = restart_callback
 
@@ -47,6 +47,8 @@ class EchoNestSync(rumps.App):
         self.forget_item = rumps.MenuItem("Forget Server...",
                                           callback=self.forget)
 
+        self.quit_item = rumps.MenuItem("Quit", callback=self.quit_app)
+
         self.menu = [
             self.status_item,
             self.track_item,
@@ -56,6 +58,8 @@ class EchoNestSync(rumps.App):
             None,
             self.autostart_item,
             self.forget_item,
+            None,
+            self.quit_item,
         ]
 
         # Set initial autostart checkmark
@@ -174,7 +178,6 @@ class EchoNestSync(rumps.App):
             else:
                 rumps.quit_application()
 
-    @rumps.clicked("Quit")
     def quit_app(self, _):
         self.channel.send_command("quit")
         rumps.quit_application()

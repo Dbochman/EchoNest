@@ -2,6 +2,7 @@
 
 import os
 import textwrap
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -76,7 +77,8 @@ class TestElapsedSeconds:
 # ---------------------------------------------------------------------------
 
 class TestConfig:
-    def test_defaults(self):
+    @patch("echonest_sync.config.get_token", return_value=None)
+    def test_defaults(self, _mock_kr):
         config = load_config(config_path="/nonexistent/path.yaml")
         assert config["server"] is None
         assert config["token"] is None
@@ -360,12 +362,16 @@ class TestCLI:
         assert result.exit_code == 0
         assert "Sync your local Spotify" in result.output
 
-    def test_missing_server(self):
+    @patch("echonest_sync.config.get_token", return_value=None)
+    @patch("echonest_sync.config.get_config_dir", return_value=Path("/nonexistent"))
+    def test_missing_server(self, _d, _t):
         runner = CliRunner()
         result = runner.invoke(main, ["--token", "abc"])
         assert result.exit_code == 1
 
-    def test_missing_token(self):
+    @patch("echonest_sync.config.get_token", return_value=None)
+    @patch("echonest_sync.config.get_config_dir", return_value=Path("/nonexistent"))
+    def test_missing_token(self, _d, _t):
         runner = CliRunner()
         result = runner.invoke(main, ["--server", "https://example.com"])
         assert result.exit_code == 1

@@ -36,6 +36,7 @@ class SyncAgent:
         self._snoozed_until = 0
         self._override_count = 0
         self._last_override_check = 0
+        self._override_grace_until = 0  # suppress override checks until this time
         self._running = True
 
     # ------------------------------------------------------------------
@@ -59,6 +60,11 @@ class SyncAgent:
                 self._sync_paused = False
                 self._snoozed_until = 0
                 self._override_count = 0
+                # Clear current track so _initial_sync re-plays it
+                self.current_track_uri = None
+                # Grace period: suppress override detection for 15s
+                # to let Spotify load the track
+                self._override_grace_until = time.time() + 15
                 self._emit("status_changed", status="syncing")
                 log.info("Sync resumed by user")
                 self._initial_sync()
@@ -91,6 +97,9 @@ class SyncAgent:
             return
 
         now = time.time()
+        # Grace period after track changes / resume to let Spotify load
+        if now < self._override_grace_until:
+            return
         if now - self._last_override_check < 5:
             return
         self._last_override_check = now
@@ -156,7 +165,8 @@ class SyncAgent:
             self.current_src = src
             return
 
-        uri = f"spotify:track:{trackid}"
+        # trackid may already be a full URI (e.g. "spotify:track:ABC123")
+        uri = trackid if trackid.startswith("spotify:") else f"spotify:track:{trackid}"
         self.current_src = src
 
         if uri != self.current_track_uri:
@@ -168,10 +178,23 @@ class SyncAgent:
                 self.player.play_track(uri)
             self.current_track_uri = uri
             self._override_count = 0  # Reset on server track change
+            # Grace period after track change to let Spotify load
+            self._override_grace_until = time.time() + 15
             self._emit("track_changed", uri=uri, title=title, artist=artist)
 
             if starttime and server_now:
                 elapsed = _elapsed_seconds(starttime, server_now)
+                duration = data.get("duration")
+                # Clamp: don't seek past the track's duration (stale starttime)
+                if duration:
+                    try:
+                        duration_s = float(duration)
+                        if elapsed > duration_s:
+                            log.debug("Elapsed %.1fs exceeds duration %.1fs — skipping seek",
+                                      elapsed, duration_s)
+                            elapsed = 0
+                    except (ValueError, TypeError):
+                        pass
                 if elapsed > 1 and self._is_sync_active():
                     log.debug("Seeking to %.1fs (elapsed since start)", elapsed)
                     # Small delay to let Spotify load the track
@@ -191,7 +214,15 @@ class SyncAgent:
             self.paused = False
             if starttime and server_now and self._is_sync_active():
                 elapsed = _elapsed_seconds(starttime, server_now)
-                self.player.seek_to(elapsed)
+                duration = data.get("duration")
+                if duration:
+                    try:
+                        if elapsed > float(duration):
+                            elapsed = 0
+                    except (ValueError, TypeError):
+                        pass
+                if elapsed > 0:
+                    self.player.seek_to(elapsed)
 
     def _handle_player_position(self, data):
         """Process a player_position event for drift correction."""
