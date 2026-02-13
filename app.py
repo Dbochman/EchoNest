@@ -1904,6 +1904,7 @@ def api_nests_create():
     creator = g.auth_email
     try:
         nest = nest_manager.create_nest(creator, name=name, seed_track=seed_track)
+        slack.notify_nest_created(nest)
         return jsonify(nest)
     except ValueError as e:
         return jsonify(error='invalid_request', message=str(e)), 400

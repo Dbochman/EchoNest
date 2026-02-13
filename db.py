@@ -1595,7 +1595,8 @@ class DB(object):
             self._r.setex(self._key('MISC|now-playing'), 2*60*60, song)
             self._r.setex(self._key('MISC|now-playing-done'), data['duration'], song)
             self._msg('now_playing_update')
-            slack.notify_now_playing(data)
+            if self.nest_id == "main":
+                slack.notify_now_playing(data)
             return data
 
     def song_end_time(self, use_estimate=True):
@@ -1798,7 +1799,8 @@ class DB(object):
                     title=playing.get('title', ''))
         self._r.rpush(self._key('AIRHORNS'), json.dumps(horn))
         self._msg('do_airhorn|0.4|%s' % name)  # volume of airhorn - may need to be tweaked, random choice for airhorn
-        slack.notify_airhorn(userid, name, playing.get('title', ''), playing.get('artist', ''))
+        if self.nest_id == "main":
+            slack.notify_airhorn(userid, name, playing.get('title', ''), playing.get('artist', ''))
 
     def airhorn(self, userid, name):
         self._check_nest_active()

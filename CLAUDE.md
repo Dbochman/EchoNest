@@ -34,6 +34,15 @@ SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_auth.py
 SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest test/test_auth.py::TestAuthGate::test_health_endpoint_public
 ```
 
+### Deployment
+
+```bash
+# Deploy to production (rsync + rebuild containers)
+make deploy
+```
+
+This rsyncs the repo to `deploy@echone.st:/opt/echonest/`, then runs `docker compose up -d --build echonest player`. A Slack notification fires automatically on container start.
+
 ### Configuration
 
 Copy `config.example.yaml` to `local_config.yaml` and fill in OAuth credentials. Environment variables override YAML config (e.g., `REDIS_HOST`, `DEBUG`, `DEV_AUTH_EMAIL`).
@@ -49,6 +58,7 @@ Copy `config.example.yaml` to `local_config.yaml` and fill in OAuth credentials.
 - **master_player.py** - Background worker that tracks playback timing, broadcasts queue updates, pre-warms Bender preview after song transitions, and runs nest cleanup loop.
 - **config.py** - Loads YAML config with environment variable overrides.
 - **analytics.py** - Fire-and-forget Redis-native event tracking (user activity, Spotify API calls, OAuth health).
+- **slack.py** - Fire-and-forget Slack webhook notifications (deploy alerts, now-playing feed, airhorn events, nest creation). Only posts for the main nest; no-op when `SLACK_WEBHOOK_URL` is unset.
 - **nests.py** - `NestManager` class, nest lifecycle helpers (`should_delete_nest`, `pubsub_channel`, etc.)
 - **templates/spotify_prompt.html** - Spotify connect interstitial shown to new users after Google sign-in.
 - **templates/stats.html** - Public analytics dashboard at `/stats`.

@@ -84,3 +84,16 @@ def notify_airhorn(user, airhorn_name, song_title, song_artist):
         f"\U0001f3b5 During: {song_title} \u2014 {song_artist}"
     )
     post(text)
+
+
+def notify_nest_created(nest):
+    """Post when a new nest is created."""
+    if not nest or not _get_url():
+        return
+
+    name = nest.get('name', nest.get('code', '???'))
+    creator = nest.get('creator', '')
+    code = nest.get('code', '')
+
+    text = f"\U0001fab9 New nest created: *{name}* (code: `{code}`) by {creator}"
+    post(text)
