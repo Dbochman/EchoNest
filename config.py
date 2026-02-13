@@ -77,6 +77,7 @@ ENV_OVERRIDES = [
     'ECHONEST_HOSTNAME',  # Use ECHONEST_HOSTNAME instead to avoid Docker conflict
     'ECHONEST_API_TOKEN',
     'ECHONEST_SPOTIFY_EMAIL',
+    'ECHONEST_ADMIN_EMAILS',
     'NESTS_ENABLED',
 ]
 
@@ -102,7 +103,12 @@ def __read_conf(*files):
     for key in ENV_OVERRIDES:
         env_val = os.environ.get(key)
         if env_val is not None:
-            config_key = 'HOSTNAME' if key == 'ECHONEST_HOSTNAME' else key
+            if key == 'ECHONEST_HOSTNAME':
+                config_key = 'HOSTNAME'
+            elif key == 'ECHONEST_ADMIN_EMAILS':
+                config_key = 'ADMIN_EMAILS'
+            else:
+                config_key = key
             if key == 'ALLOWED_EMAIL_DOMAINS':
                 env_val = _normalize_allowed_email_domains(env_val)
             else:

@@ -27,6 +27,7 @@ from flask_assets import Environment, Bundle
 from config import CONF
 from db import DB, is_spotify_rate_limited, set_spotify_rate_limit, handle_spotify_exception
 from nests import pubsub_channel, NestManager, refresh_member_ttl, member_key, members_key
+import analytics
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -336,9 +337,11 @@ class MusicNamespace(WebSocketManager):
                 logger.exception('Failed to join nest %s', nest_id)
         self.spawn(self.listener)
         self.log('New namespace for {0} (nest={1})'.format(self.email, self.nest_id))
+        analytics.track(self.db._r, 'ws_connect', self.email)
 
     def _on_disconnect(self):
         """Leave nest on WebSocket disconnect."""
+        analytics.track(self.db._r, 'ws_disconnect', self.email)
         if nest_manager:
             try:
                 nest_manager.leave_nest(self.nest_id, self.email)
@@ -498,6 +501,7 @@ class MusicNamespace(WebSocketManager):
 
     def on_add_song(self, song_id, src):
         logger.info('on_add_song called: song_id=%s, src=%s, email=%s', song_id, src, self.email)
+        analytics.track(self.db._r, 'song_add', self.email)
         if src == 'spotify':
             self.log(
                 'add_spotify_song "{0}" "{1}"'.format(self.email, song_id))
@@ -550,6 +554,7 @@ class MusicNamespace(WebSocketManager):
 
     def on_vote(self, id, up):
         self.log('Vote from {0} on {1} {2}'.format(self.email, id, up))
+        analytics.track(self.db._r, 'vote', self.email)
         self._safe_db_call(self.db.vote, self.email, id, up)
 
     def on_kill(self, id):
@@ -566,6 +571,7 @@ class MusicNamespace(WebSocketManager):
 
     def on_airhorn(self, name):
         self.log('Airhorn {0}, {1}'.format(self.email, name))
+        analytics.track(self.db._r, 'airhorn', self.email)
         self._safe_db_call(self.db.airhorn, self.email, name=name)
 
     def on_free_airhorn(self):
@@ -582,6 +588,7 @@ class MusicNamespace(WebSocketManager):
 
     def on_jam(self, id):
         self.log('{0} jammed {1}'.format(self.email, id))
+        analytics.track(self.db._r, 'jam', self.email)
         self._safe_db_call(self.db.jam, id, self.email)
 
     def on_benderQueue(self, id):
@@ -882,6 +889,7 @@ def auth_callback():
     for k1, k2 in (('email', 'email',), ('fullname', 'name'),):
         session[k1] = user[k2]
 
+    analytics.track(d._r, 'login', email)
     return redirect('/')
 
 
@@ -1063,6 +1071,7 @@ def signup():
 
     session['email'] = email
     session['fullname'] = 'Guest'
+    analytics.track(d._r, 'signup', email)
     return redirect('/')
 
 
@@ -1308,6 +1317,51 @@ def airhorn_list():
     resp = jsonify(airhorns_list)
 
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Admin stats dashboard
+# ---------------------------------------------------------------------------
+
+def _is_admin(email):
+    admin_emails = CONF.ADMIN_EMAILS or []
+    if isinstance(admin_emails, str):
+        admin_emails = [e.strip() for e in admin_emails.split(',')]
+    return email in admin_emails
+
+
+@app.route('/admin/stats')
+def admin_stats():
+    email = session.get('email')
+    if not email or not _is_admin(email):
+        return redirect('/')
+    today_stats = analytics.get_daily_stats(d._r)
+    dau_today = analytics.get_daily_active_users(d._r)
+    dau_trend = analytics.get_dau_trend(d._r, days=7)
+    all_users = analytics.get_user_stats(d._r, days=7)
+    known_users = analytics.get_known_user_count(d._r)
+
+    # Split: my stats vs everyone else aggregated
+    my_stats = {}
+    others_stats = {}
+    others_count = 0
+    event_types = ['song_add', 'vote', 'jam', 'airhorn', 'login', 'ws_connect']
+    for u in all_users:
+        if u['email'] == email:
+            my_stats = u
+        else:
+            others_count += 1
+            for et in event_types:
+                others_stats[et] = others_stats.get(et, 0) + u.get(et, 0)
+
+    return render_template('admin_stats.html',
+                           today=today_stats,
+                           dau_count=len(dau_today),
+                           dau_trend=dau_trend,
+                           my_stats=my_stats,
+                           others_stats=others_stats,
+                           others_count=others_count,
+                           known_users=known_users)
 
 
 # ---------------------------------------------------------------------------

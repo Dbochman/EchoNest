@@ -21,6 +21,7 @@ import spotipy.oauth2, spotipy.client
 from flask import render_template
 from config import CONF
 from history import PlayHistory
+import analytics
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -700,6 +701,7 @@ class DB(object):
                 break
         if added > 0:
             logger.info("Backfilled %d tracks to maintain queue depth", added)
+            analytics.track(self._r, 'bender_fill')
 
     def ensure_fill_songs(self):
         """Lazy pre-warm: ensure at least one strategy cache has tracks."""
@@ -1865,6 +1867,7 @@ class DB(object):
         self._r.set(self._key('MISC|last-played'), song_json)
         _log_play(song_json)
         self._h.add_play(song_json)
+        analytics.track(self._r, 'song_finish')
 
     def get_historian(self):
         return self._h
