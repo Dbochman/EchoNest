@@ -701,7 +701,6 @@ class DB(object):
                 break
         if added > 0:
             logger.info("Backfilled %d tracks to maintain queue depth", added)
-            analytics.track(self._r, 'bender_fill')
 
     def ensure_fill_songs(self):
         """Lazy pre-warm: ensure at least one strategy cache has tracks."""
