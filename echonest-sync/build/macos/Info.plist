@@ -16,9 +16,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>echonest-sync-app</string>
-    <key>CFBundleIconFile</key>
-    <string>icon.icns</string>
+    <string>EchoNest Sync</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
