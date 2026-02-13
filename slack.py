@@ -85,6 +85,16 @@ def notify_airhorn(user, airhorn_name, song_title, song_artist):
     post(text)
 
 
+def notify_pause(user):
+    """Post when playback is paused."""
+    post(f"\u23f8\ufe0f {user} paused playback.")
+
+
+def notify_unpause(user):
+    """Post when playback is unpaused."""
+    post(f"\u25b6\ufe0f {user} unpaused playback.")
+
+
 def notify_nest_created(nest):
     """Post when a new nest is created."""
     if not nest or not _get_url():

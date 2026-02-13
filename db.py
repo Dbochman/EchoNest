@@ -1744,6 +1744,8 @@ class DB(object):
         self._check_nest_active()
         self._r.set(self._key('MISC|paused'), 1)
         self._msg('now_playing_update')
+        if self.nest_id == "main":
+            slack.notify_pause(email)
 
     def unpause(self, email):
         self._check_nest_active()
@@ -1759,6 +1761,8 @@ class DB(object):
                 self._r.delete(self._key('MISC|now-playing'))
                 logger.info("unpause: cleared stale now-playing %s (no song data)", now_playing_id)
         self._msg('now_playing_update')
+        if self.nest_id == "main":
+            slack.notify_unpause(email)
 
     def trim_horns(self):
         logger.debug("TRIM HORNS")
