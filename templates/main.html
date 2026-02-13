@@ -28,17 +28,16 @@
             <div id="tabs">
                 <div id="airhorn-tab">
                     <a href="javascript:void(0);" id="do-airhorn" class="left-button">airhorn</a>
-                    <a href="javascript:void(0);" id="airhorn-sync-audio" class="left-button sync-audio-btn">Sync Audio</a>
                     <div id="airhorn-history">
                     </div>
                 </div>
                 <div id="add-song-tab">
                     <form id="uri-search">
-                        <input type="text" name="uri-query" id="uri-query" placeholder="Search Music">
+                        <input type="text" name="uri-query" id="uri-query" placeholder="search music">
                     </form>
                     <div id="search-results">
                         <div id="uri-help">
-                            <h4>Search Spotify, or paste a Spotify, SoundCloud, or YouTube URI here.</h4>
+                            <h4>search Spotify, or paste a Spotify, SoundCloud, or YouTube URI here.</h4>
                         </div>
                         <div id="spotify-results">
                         </div>
@@ -48,11 +47,11 @@
                         </div>
                     </div>
                     <form id="podcast-search">
-                        <input type="text" name="podcast-query" id="podcast-query" placeholder="Search Podcasts">
+                        <input type="text" name="podcast-query" id="podcast-query" placeholder="search podcasts">
                     </form>
                     <div id="podcast-search-results">
                         <div id="podcast-help">
-                            <h4>Search Spotify for Podcasts.</h4>
+                            <h4>search Spotify for podcasts.</h4>
                         </div>
                         <div id="episode-results">
                         </div>
@@ -60,7 +59,7 @@
                 </div>
                 <div id="search-song-tab">
                     <form id="song-search">
-                        <input type="text" name="song-query" id="song-query" placeholder="Search Text">
+                        <input type="text" name="song-query" id="song-query" placeholder="search text">
                     </form>
                     <div id="qbd-search-results">
                         <div id="talkie-help">
@@ -71,10 +70,6 @@
                     </div>
                 </div>
 
-
-                <div id="volume-tab">
-                    <h4>Coming Soon!</h4>
-                </div>
                 <div id="other-tab">
                     <a href="javascript:void(0);" id="make-player" class="left-button">sync audio</a>
                     <a href="/spotify_connect/authorize?force=1" id="connect-spotify" class="left-button">reconnect spotify</a>
@@ -89,13 +84,13 @@
                 </div>
                 <div id="echonest-tab" class="visible">
                     <a href="javascript:void(0);" id="unpause-btn" class="left-button" style="display:none;">unpause everything</a>
-                    <a href="javascript:void(0);" id="sync-audio-btn" class="left-button sync-audio-btn">Sync Audio</a>
+                    <a href="javascript:void(0);" id="sync-audio-btn" class="left-button sync-audio-btn">sync audio</a>
                     {% if is_main_nest %}
-                    <a href="javascript:void(0);" id="nest-build" class="left-button">Build a Nest</a>
-                    <a href="javascript:void(0);" id="nest-join-btn" class="left-button">Join a Nest</a>
+                    <a href="javascript:void(0);" id="nest-build" class="left-button">build a nest</a>
+                    <a href="javascript:void(0);" id="nest-join-btn" class="left-button">join a nest</a>
                     {% else %}
-                    <a href="javascript:void(0);" id="nest-share" class="left-button">Share Nest</a>
-                    <a href="/" class="left-button">Back to The EchoNest</a>
+                    <a href="javascript:void(0);" id="nest-share" class="left-button">share nest</a>
+                    <a href="/" class="left-button">back to the EchoNest</a>
                     {% endif %}
                     <span id="nest-bar-error" class="nest-bar-error"></span>
                     {% if is_main_nest %}
