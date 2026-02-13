@@ -50,26 +50,25 @@ def notify_now_playing(song):
     title = song.get('title', 'Unknown')
     artist = song.get('artist', 'Unknown')
     user = song.get('user', '')
-    img = song.get('big_img') or song.get('img', '')
+    img = song.get('img', '')
 
     text = f"\U0001f3b5 Now Playing: *{title}* by *{artist}*\nAdded by {user}"
 
-    blocks = [
+    elements = [
         {
-            'type': 'section',
-            'text': {
-                'type': 'mrkdwn',
-                'text': f"\U0001f3b5 Now Playing: *{title}* by *{artist}*\nAdded by {user}",
-            },
+            'type': 'mrkdwn',
+            'text': f"\U0001f3b5 Now Playing: *{title}* by *{artist}* \u2014 Added by {user}",
         },
     ]
 
     if img:
-        blocks[0]['accessory'] = {
+        elements.insert(0, {
             'type': 'image',
             'image_url': img,
             'alt_text': f"{title} album art",
-        }
+        })
+
+    blocks = [{'type': 'context', 'elements': elements}]
 
     post(text, blocks=blocks)
 
