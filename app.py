@@ -1839,7 +1839,7 @@ def api_sync_token():
         return jsonify(error='server_not_configured'), 503
 
     hostname = CONF.HOSTNAME or request.host
-    scheme = 'https' if request.is_secure else 'https'  # always https in prod
+    scheme = 'https' if request.is_secure else 'http'
     server_url = f'{scheme}://{hostname}'
 
     return jsonify(token=configured_token, server=server_url)

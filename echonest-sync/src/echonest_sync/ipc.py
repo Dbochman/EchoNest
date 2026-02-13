@@ -1,5 +1,7 @@
 """Thread-safe IPC channel between tray GUI (main thread) and sync engine (background thread)."""
 
+from __future__ import annotations
+
 import queue
 import time
 from dataclasses import dataclass, field

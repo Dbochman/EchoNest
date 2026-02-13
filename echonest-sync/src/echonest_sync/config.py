@@ -5,6 +5,7 @@ import os
 import platform
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -44,7 +45,7 @@ def get_config_dir() -> Path:
 # Keyring (secure token storage)
 # ---------------------------------------------------------------------------
 
-def get_token() -> str | None:
+def get_token() -> Optional[str]:
     """Read API token from OS keychain. Returns None if not set."""
     try:
         import keyring
