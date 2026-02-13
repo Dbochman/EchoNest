@@ -43,27 +43,52 @@ def notify_deploy():
     post("\U0001f504 EchoNest is restarting \u2014 you may need to resync audio.")
 
 
-def _track_url(song):
-    """Build a Spotify track URL from the song's trackid."""
-    trackid = song.get('trackid', '')
-    if trackid:
-        track_id = trackid.split(':')[-1]
-        return f"https://open.spotify.com/track/{track_id}"
-    return ''
-
-
-def _artist_url(song):
-    """Extract the first artist's Spotify URL from the raw API data."""
+def _parse_data(song):
+    """Parse the raw API response from the song's data field."""
     data = song.get('data', '')
     if isinstance(data, str):
         try:
             data = json.loads(data)
         except (json.JSONDecodeError, TypeError):
-            return ''
-    if isinstance(data, dict):
+            return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _track_url(song):
+    """Build a track URL based on the song source."""
+    src = song.get('src', '')
+    trackid = song.get('trackid', '')
+    if src == 'spotify' and trackid:
+        return f"https://open.spotify.com/track/{trackid.split(':')[-1]}"
+    if src == 'soundcloud':
+        permalink = song.get('permalink_url', '')
+        if permalink:
+            return permalink
+        if trackid:
+            return f"https://soundcloud.com/tracks/{trackid}"
+    if src == 'youtube' and trackid:
+        return f"https://www.youtube.com/watch?v={trackid}"
+    return ''
+
+
+def _artist_url(song):
+    """Extract the artist's profile URL based on the song source."""
+    src = song.get('src', '')
+    data = _parse_data(song)
+    if src == 'spotify':
         artists = data.get('artists', [])
         if artists:
             return artists[0].get('external_urls', {}).get('spotify', '')
+    elif src == 'soundcloud':
+        user = data.get('user', {})
+        if isinstance(user, dict):
+            return user.get('permalink_url', '')
+    elif src == 'youtube':
+        snippet = data.get('snippet', {})
+        if isinstance(snippet, dict):
+            channel_id = snippet.get('channelId', '')
+            if channel_id:
+                return f"https://www.youtube.com/channel/{channel_id}"
     return ''
 
 
