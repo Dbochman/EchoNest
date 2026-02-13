@@ -1390,6 +1390,141 @@ def admin_stats_redirect():
     return redirect('/stats')
 
 
+@app.route('/help')
+def help_page():
+    guide_path = os.path.join(os.path.dirname(__file__), 'docs', 'GETTING_STARTED.md')
+    try:
+        with open(guide_path, 'r') as f:
+            md = f.read()
+        guide_html = _markdown_to_html(md)
+    except Exception:
+        guide_html = '<p>Guide not available.</p>'
+    return render_template('help.html', guide_html=guide_html)
+
+
+def _markdown_to_html(text):
+    """Minimal markdown-to-HTML for the getting started guide."""
+    import re
+    lines = text.split('\n')
+    html_lines = []
+    in_list = None  # 'ol' or 'ul'
+    in_table = False
+    in_p = False
+
+    def inline(s):
+        s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
+        s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', s)
+        s = re.sub(r'`([^`]+)`', r'<code>\1</code>', s)
+        return s
+
+    def close_list():
+        nonlocal in_list
+        if in_list:
+            html_lines.append(f'</{in_list}>')
+            in_list = None
+
+    def close_p():
+        nonlocal in_p
+        if in_p:
+            html_lines.append('</p>')
+            in_p = False
+
+    def close_table():
+        nonlocal in_table
+        if in_table:
+            html_lines.append('</tbody></table>')
+            in_table = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # blank line
+        if not stripped:
+            close_list()
+            close_p()
+            continue
+
+        # headings
+        m = re.match(r'^(#{1,3})\s+(.*)', stripped)
+        if m:
+            close_list()
+            close_p()
+            close_table()
+            level = len(m.group(1))
+            html_lines.append(f'<h{level}>{inline(m.group(2))}</h{level}>')
+            continue
+
+        # table separator row (skip)
+        if re.match(r'^\|[\s\-:|]+\|$', stripped):
+            continue
+
+        # table header row
+        if stripped.startswith('|') and not in_table:
+            close_list()
+            close_p()
+            cells = [c.strip() for c in stripped.strip('|').split('|')]
+            html_lines.append('<table><thead><tr>')
+            for c in cells:
+                html_lines.append(f'<th>{inline(c)}</th>')
+            html_lines.append('</tr></thead><tbody>')
+            in_table = True
+            continue
+
+        # table data row
+        if stripped.startswith('|') and in_table:
+            cells = [c.strip() for c in stripped.strip('|').split('|')]
+            html_lines.append('<tr>')
+            for c in cells:
+                html_lines.append(f'<td>{inline(c)}</td>')
+            html_lines.append('</tr>')
+            continue
+
+        # close table if non-table line
+        if in_table and not stripped.startswith('|'):
+            close_table()
+
+        # ordered list
+        m = re.match(r'^(\d+)\.\s+(.*)', stripped)
+        if m:
+            close_p()
+            if in_list != 'ol':
+                close_list()
+                html_lines.append('<ol>')
+                in_list = 'ol'
+            html_lines.append(f'<li>{inline(m.group(2))}</li>')
+            continue
+
+        # unordered list
+        m = re.match(r'^[-*]\s+(.*)', stripped)
+        if m:
+            close_p()
+            if in_list != 'ul':
+                close_list()
+                html_lines.append('<ul>')
+                in_list = 'ul'
+            html_lines.append(f'<li>{inline(m.group(1))}</li>')
+            continue
+
+        # list continuation (indented under a list item)
+        if in_list and line.startswith('   '):
+            last = html_lines[-1]
+            if last.endswith('</li>'):
+                html_lines[-1] = last[:-5] + ' ' + inline(stripped) + '</li>'
+            continue
+
+        # paragraph
+        close_list()
+        if not in_p:
+            html_lines.append('<p>')
+            in_p = True
+        html_lines.append(inline(stripped))
+
+    close_list()
+    close_p()
+    close_table()
+    return '\n'.join(html_lines)
+
+
 # ---------------------------------------------------------------------------
 # REST API (token-authenticated, for programmatic access e.g. OpenClaw)
 # ---------------------------------------------------------------------------

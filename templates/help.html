@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>EchoNest - Help</title>
+        <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css" type="text/css">
+        <link rel="shortcut icon" href="/static/favicon.png">
+        <style>
+            body { background: #1a1a2e; color: #eee; }
+            .help-container {
+                max-width: 700px;
+                margin: 40px auto;
+                padding: 0 20px;
+            }
+            .help-header {
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            .help-header h1 { margin-bottom: 10px; }
+            .help-header p.subtitle { color: #aaa; margin-bottom: 24px; }
+            .btn-slack {
+                display: inline-block;
+                padding: 12px 32px;
+                font-size: 16px;
+                background: #4A154B;
+                color: #fff;
+                border: none;
+                border-radius: 4px;
+                margin-bottom: 12px;
+                text-decoration: none;
+            }
+            .btn-slack:hover { background: #611f69; color: #fff; text-decoration: none; }
+            .btn-back {
+                display: inline-block;
+                margin-left: 12px;
+                padding: 12px 32px;
+                font-size: 16px;
+                background: #333;
+                color: #ccc;
+                border: none;
+                border-radius: 4px;
+                text-decoration: none;
+            }
+            .btn-back:hover { background: #444; color: #fff; text-decoration: none; }
+            .guide {
+                margin-top: 40px;
+                padding-top: 30px;
+                border-top: 1px solid #333;
+            }
+            .guide h1 { font-size: 28px; margin-bottom: 6px; }
+            .guide h2 {
+                font-size: 22px;
+                margin-top: 30px;
+                margin-bottom: 12px;
+                padding-bottom: 6px;
+                border-bottom: 1px solid #333;
+            }
+            .guide h3 { font-size: 18px; margin-top: 24px; margin-bottom: 8px; }
+            .guide p, .guide li { color: #ccc; line-height: 1.7; }
+            .guide a { color: #7eb8da; }
+            .guide strong { color: #eee; }
+            .guide ol, .guide ul { padding-left: 24px; }
+            .guide table {
+                width: 100%;
+                margin: 12px 0;
+                border-collapse: collapse;
+            }
+            .guide th {
+                text-align: left;
+                padding: 8px 12px;
+                border-bottom: 2px solid #444;
+                color: #eee;
+            }
+            .guide td {
+                padding: 8px 12px;
+                border-bottom: 1px solid #333;
+                color: #ccc;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="help-container">
+            <div class="help-header">
+                <h1>Need Help?</h1>
+                <p class="subtitle">Join the EchoNest Lounge on Slack for live support, or read the guide below.</p>
+                <a href="https://join.slack.com/t/echonestlounge/shared_invite/zt-3qfkdab1s-ML1VP_YQDYk1LkHH1fy9UA" target="_blank" class="btn-slack">Join Slack</a>
+                <a href="/" class="btn-back">Back to EchoNest</a>
+            </div>
+
+            <div class="guide">
+                {{ guide_html | safe }}
+            </div>
+        </div>
+    </body>
+</html>
