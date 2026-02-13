@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EchoNest — Stats</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #111; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; max-width: 960px; margin: 0 auto; }
+        h1 { font-size: 22px; margin-bottom: 24px; color: #fff; }
+        h2 { font-size: 16px; margin-bottom: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        a { color: #6cf; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .back { display: inline-block; margin-bottom: 16px; font-size: 13px; }
+        .section { margin-bottom: 36px; }
+
+        /* Card grid */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-bottom: 24px; }
+        .card { background: #1a1a1a; border-radius: 8px; padding: 14px; }
+        .card .value { font-size: 26px; font-weight: 700; color: #fff; }
+        .card .label { font-size: 11px; color: #888; margin-top: 4px; }
+        .card.warn .value { color: #e74; }
+        .card.good .value { color: #2a6; }
+
+        /* Bar charts */
+        .chart { display: flex; align-items: flex-end; gap: 6px; height: 100px; margin-bottom: 16px; }
+        .bar-wrapper { flex: 1; display: flex; flex-direction: column; align-items: center; }
+        .bar { width: 100%; border-radius: 4px 4px 0 0; min-height: 2px; transition: height 0.3s; }
+        .bar.green { background: #2a6; }
+        .bar.blue { background: #38c; }
+        .bar.orange { background: #c84; }
+        .bar.red { background: #c44; }
+        .bar.purple { background: #86c; }
+        .bar-label { font-size: 10px; color: #888; margin-top: 4px; white-space: nowrap; }
+        .bar-count { font-size: 11px; color: #ccc; margin-bottom: 2px; }
+
+        /* Stacked bar for OAuth trend */
+        .stacked-bar { display: flex; flex-direction: column-reverse; width: 100%; min-height: 2px; }
+        .stacked-segment { width: 100%; transition: height 0.3s; }
+        .stacked-segment:first-child { border-radius: 0; }
+        .stacked-segment:last-child { border-radius: 4px 4px 0 0; }
+        .stacked-segment.reconnect { background: #38c; }
+        .stacked-segment.refresh { background: #2a6; }
+        .stacked-segment.stale { background: #c44; }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        th { text-align: left; font-size: 12px; color: #888; padding: 8px 12px; border-bottom: 1px solid #333; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 8px 12px; border-bottom: 1px solid #222; font-size: 13px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .me { color: #2a6; font-weight: 600; }
+
+        /* Legend */
+        .legend { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #aaa; }
+        .legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+        /* Divider */
+        hr { border: none; border-top: 1px solid #333; margin: 32px 0; }
+    </style>
+</head>
+<body>
+    <a href="/" class="back">&larr; back to EchoNest</a>
+    <h1>EchoNest Stats</h1>
+
+    <!-- ============== TODAY AT A GLANCE ============== -->
+    <div class="section">
+        <h2>Today at a Glance</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="value">{{ dau_count }}</div>
+                <div class="label">Active Users</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ today.get('song_add', 0) }}</div>
+                <div class="label">Songs Queued</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ today.get('vote', 0) }}</div>
+                <div class="label">Votes</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ today.get('jam', 0) }}</div>
+                <div class="label">Jams</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ today.get('airhorn', 0) }}</div>
+                <div class="label">Airhorns</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ today.get('song_finish', 0) }}</div>
+                <div class="label">Songs Played</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ today.get('bender_fill', 0) }}</div>
+                <div class="label">Bender Fills</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ known_users }}</div>
+                <div class="label">Total Users</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============== DAU TREND ============== -->
+    <div class="section">
+        <h2>Daily Active Users (7 days)</h2>
+        {% set max_dau = dau_trend|map(attribute=1)|max or 1 %}
+        <div class="chart">
+            {% for date, count in dau_trend %}
+            <div class="bar-wrapper">
+                <div class="bar-count">{{ count }}</div>
+                <div class="bar green" style="height: {{ (count / max_dau * 100)|int }}%;"></div>
+                <div class="bar-label">{{ date[5:] }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ============== YOU VS OTHERS ============== -->
+    {% if logged_in %}
+    <div class="section">
+        <h2>You vs Everyone Else (7 days)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th class="num">Songs</th>
+                    <th class="num">Votes</th>
+                    <th class="num">Jams</th>
+                    <th class="num">Airhorns</th>
+                    <th class="num">Sessions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="me">You</td>
+                    <td class="num me">{{ my_stats.get('song_add', 0) }}</td>
+                    <td class="num me">{{ my_stats.get('vote', 0) }}</td>
+                    <td class="num me">{{ my_stats.get('jam', 0) }}</td>
+                    <td class="num me">{{ my_stats.get('airhorn', 0) }}</td>
+                    <td class="num me">{{ my_stats.get('ws_connect', 0) }}</td>
+                </tr>
+                <tr>
+                    <td>Others ({{ others_count }})</td>
+                    <td class="num">{{ others_stats.get('song_add', 0) }}</td>
+                    <td class="num">{{ others_stats.get('vote', 0) }}</td>
+                    <td class="num">{{ others_stats.get('jam', 0) }}</td>
+                    <td class="num">{{ others_stats.get('airhorn', 0) }}</td>
+                    <td class="num">{{ others_stats.get('ws_connect', 0) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <hr>
+
+    <!-- ============== SPOTIFY API CALLS ============== -->
+    <div class="section">
+        <h2>Spotify API Calls Today</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="value">{{ spotify_api.total_today }}</div>
+                <div class="label">Total Calls</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ spotify_api.today.search }}</div>
+                <div class="label">Search</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ spotify_api.today.get_track + spotify_api.today.get_episode }}</div>
+                <div class="label">Track Lookups</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ spotify_api.today.top_tracks + spotify_api.today.album_tracks }}</div>
+                <div class="label">Bender Queries</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ spotify_api.today.devices + spotify_api.today.transfer + spotify_api.today.status }}</div>
+                <div class="label">Connect Calls</div>
+            </div>
+            <div class="card {{ 'warn' if spotify_api.today.rate_limited > 0 else 'good' }}">
+                <div class="value">{{ spotify_api.today.rate_limited }}</div>
+                <div class="label">Rate Limited</div>
+            </div>
+            <div class="card {{ 'warn' if spotify_api.today.error > 0 else '' }}">
+                <div class="value">{{ spotify_api.today.error }}</div>
+                <div class="label">Errors</div>
+            </div>
+        </div>
+
+        <h2>API Calls (7-day trend)</h2>
+        {% set max_api = spotify_api.trend|map(attribute='calls')|max or 1 %}
+        <div class="chart">
+            {% for day in spotify_api.trend %}
+            <div class="bar-wrapper">
+                <div class="bar-count">{{ day.calls }}</div>
+                <div class="bar blue" style="height: {{ (day.calls / max_api * 100)|int }}%;"></div>
+                <div class="bar-label">{{ day.date[5:] }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ============== SPOTIFY OAUTH HEALTH ============== -->
+    <div class="section">
+        <h2>Spotify OAuth Health Today</h2>
+        <div class="grid">
+            <div class="card good">
+                <div class="value">{{ spotify_oauth.today.refresh }}</div>
+                <div class="label">Token Refreshes</div>
+            </div>
+            <div class="card">
+                <div class="value">{{ spotify_oauth.today.reconnect }}</div>
+                <div class="label">Reconnects</div>
+            </div>
+            <div class="card {{ 'warn' if spotify_oauth.today.stale > 0 else 'good' }}">
+                <div class="value">{{ spotify_oauth.today.stale }}</div>
+                <div class="label">Stale Tokens</div>
+            </div>
+        </div>
+
+        <h2>OAuth Events (7-day trend)</h2>
+        <div class="legend">
+            <div class="legend-item"><div class="legend-swatch" style="background:#2a6"></div> Refresh</div>
+            <div class="legend-item"><div class="legend-swatch" style="background:#38c"></div> Reconnect</div>
+            <div class="legend-item"><div class="legend-swatch" style="background:#c44"></div> Stale</div>
+        </div>
+        {% set max_oauth = [] %}
+        {% for day in spotify_oauth.trend %}
+            {% set total = day.get('refresh', 0) + day.get('reconnect', 0) + day.get('stale', 0) %}
+            {% if max_oauth.append(total) %}{% endif %}
+        {% endfor %}
+        {% set max_oauth_val = max_oauth|max or 1 %}
+        <div class="chart">
+            {% for day in spotify_oauth.trend %}
+            {% set refresh = day.get('refresh', 0) %}
+            {% set reconnect = day.get('reconnect', 0) %}
+            {% set stale = day.get('stale', 0) %}
+            {% set total = refresh + reconnect + stale %}
+            <div class="bar-wrapper">
+                <div class="bar-count">{{ total }}</div>
+                <div class="stacked-bar" style="height: {{ (total / max_oauth_val * 100)|int if total > 0 else 0 }}%;">
+                    <div class="stacked-segment refresh" style="height: {{ (refresh / total * 100)|int if total > 0 else 0 }}%;"></div>
+                    <div class="stacked-segment reconnect" style="height: {{ (reconnect / total * 100)|int if total > 0 else 0 }}%;"></div>
+                    <div class="stacked-segment stale" style="height: {{ (stale / total * 100)|int if total > 0 else 0 }}%;"></div>
+                </div>
+                <div class="bar-label">{{ day.date[5:] }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ============== API CALL BREAKDOWN ============== -->
+    <div class="section">
+        <h2>API Call Breakdown (Today)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Endpoint</th>
+                    <th class="num">Calls</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for name, count in [
+                    ('Search', spotify_api.today.search),
+                    ('Track Info', spotify_api.today.track),
+                    ('Artist Info', spotify_api.today.artist),
+                    ('Top Tracks', spotify_api.today.top_tracks),
+                    ('Album Tracks', spotify_api.today.album_tracks),
+                    ('Get Track', spotify_api.today.get_track),
+                    ('Get Episode', spotify_api.today.get_episode),
+                    ('Devices', spotify_api.today.devices),
+                    ('Transfer', spotify_api.today.transfer),
+                    ('Status', spotify_api.today.status),
+                ] %}
+                {% if count > 0 %}
+                <tr>
+                    <td>{{ name }}</td>
+                    <td class="num">{{ count }}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                {% if spotify_api.today.rate_limited > 0 %}
+                <tr>
+                    <td style="color: #e74;">Rate Limited (429)</td>
+                    <td class="num" style="color: #e74;">{{ spotify_api.today.rate_limited }}</td>
+                </tr>
+                {% endif %}
+                {% if spotify_api.today.error > 0 %}
+                <tr>
+                    <td style="color: #e74;">Errors</td>
+                    <td class="num" style="color: #e74;">{{ spotify_api.today.error }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+</body>
+</html>

@@ -46,7 +46,7 @@ Copy `config.example.yaml` to `local_config.yaml` and fill in OAuth credentials.
 - **db.py** - Redis interface (`DB` class) and Bender recommendation engine. All queue operations, voting, and song filtering logic lives here.
 - **history.py** - `PlayHistory` class for tracking played songs (powers Throwback feature).
 - **run.py** - Entry point; starts gevent WSGI server on port 5000.
-- **master_player.py** - Background worker that tracks playback timing and broadcasts queue updates.
+- **master_player.py** - Background worker that tracks playback timing, broadcasts queue updates, pre-warms Bender preview after song transitions, and runs nest cleanup loop.
 - **config.py** - Loads YAML config with environment variable overrides.
 
 ### Services (Docker Compose)
@@ -77,6 +77,22 @@ Spotify deprecated `/recommendations` and `/artists/{id}/related-artists` APIs (
 
 Seeds from: last-queued track → last-bender-track → now-playing → fallback.
 
+After song transitions, master_player pre-warms `BENDER|next-preview` via `_peek_next_fill_song()` and sends an explicit `playlist_update` message so clients always have fresh Bender preview data.
+
+### Analytics
+
+**Module**: `analytics.py` — fire-and-forget Redis tracking, 90-day TTL. All events use `analytics.track(r, event_type, email)`.
+
+**User activity events**: `login`, `signup`, `song_add`, `vote`, `jam`, `airhorn`, `ws_connect`, `ws_disconnect`, `bender_fill`, `song_finish`
+
+**Spotify API tracking** (12 event types): `spotify_api_search`, `spotify_api_track`, `spotify_api_artist`, `spotify_api_top_tracks`, `spotify_api_album_tracks`, `spotify_api_get_track`, `spotify_api_get_episode`, `spotify_api_devices`, `spotify_api_transfer`, `spotify_api_status`, `spotify_api_rate_limited`, `spotify_api_error`. Instrumented at every Spotify API call site in `db.py` and `app.py`.
+
+**Spotify OAuth tracking** (3 event types): `spotify_oauth_reconnect` (user clicked reconnect button), `spotify_oauth_refresh` (OAuth callback completed), `spotify_oauth_stale` (cached token missing/expired). Per-user breakdown available via sorted sets.
+
+**Dashboard**: `/stats` — gated by `ADMIN_EMAILS` config (env: `ECHONEST_ADMIN_EMAILS`).
+
+**API endpoint**: `GET /api/stats?days=N` — returns JSON with `today`, `dau`, `dau_trend`, `known_users`, `spotify_api` (call counts + daily trend), and `spotify_oauth` (reconnect/refresh/stale counts + stale_users breakdown).
+
 ### Frontend
 
 Backbone.js + jQuery served as static files. Main logic in `static/js/app.js`. Nine color themes rotate.
@@ -91,7 +107,7 @@ Backbone.js + jQuery served as static files. Main logic in `static/js/app.js`. N
 - `/api/` is in `SAFE_PARAM_PATHS` (bypasses session auth); token auth handled by decorator
 - Config: set `ECHONEST_API_TOKEN` via environment variable or yaml config
 - Spotify Connect endpoints (`/api/spotify/*`) use the same Bearer token auth; require `ECHONEST_SPOTIFY_EMAIL` to be set and the corresponding user to have completed Spotify OAuth via the browser
-- Read endpoints: `GET /api/queue` (full metadata including vote, jam, comments, duration, score), `GET /api/playing` (now-playing with server timestamp), `GET /api/events` (SSE stream)
+- Read endpoints: `GET /api/queue` (full metadata including vote, jam, comments, duration, score), `GET /api/playing` (now-playing with server timestamp), `GET /api/events` (SSE stream), `GET /api/stats?days=N` (analytics with Spotify API/OAuth breakdowns)
 
 ### Redis Data
 - Strings decoded automatically (`decode_responses=True`)
@@ -113,7 +129,7 @@ Server-side Spotify playback control via REST API. The `_get_spotify_client()` h
 
 ### What Are Nests?
 
-Nests are independent listening sessions (rooms) with shareable 5-character codes. The current single-queue becomes the permanent "Main Nest" (`nest_id="main"`). Temporary nests auto-cleanup after inactivity. Domain `echone.st` is registered for short links.
+Nests are independent listening sessions (rooms) with shareable 5-character codes. The current single-queue becomes the permanent "Main Nest" (`nest_id="main"`). Temporary nests auto-cleanup after inactivity (checked every 60s by `nest_cleanup_loop()` in master_player). Cleanup is based on member count and `last_activity` TTL — orphaned queue songs from Bender do NOT prevent cleanup. Domain `echone.st` is registered for short links.
 
 ### Architecture Summary
 
@@ -176,3 +192,4 @@ When a judgment call is needed during implementation:
 
 1. Spotify recommendations API deprecated - workaround uses top tracks + album tracks
 2. HOSTNAME in config must exactly match Google OAuth redirect URI registration
+3. `handle_spotify_exception()` is a module-level function in `db.py` — uses `_get_rate_limit_redis()` for analytics tracking since it has no `self._r`

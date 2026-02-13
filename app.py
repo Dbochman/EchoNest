@@ -757,7 +757,7 @@ def inject_config():
     return dict(CONF=CONF)
 
 SAFE_PATHS = ('/login/', '/login/google', '/logout/', '/playing/', '/queue/', '/volume/',
-              '/signup/', '/signup', '/api/jammit/', '/health',
+              '/signup/', '/signup', '/api/jammit/', '/health', '/stats',
               '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/')
 SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/youtube/lookup', '/youtube/playlist', '/add_song',
     '/blast_airhorn', '/airhorn_list', '/queue/', '/jam', '/api/')
@@ -1348,38 +1348,46 @@ def _is_admin(email):
     return email in admin_emails
 
 
-@app.route('/admin/stats')
-def admin_stats():
-    email = session.get('email')
-    if not email or not _is_admin(email):
-        return redirect('/')
+@app.route('/stats')
+def public_stats():
     today_stats = analytics.get_daily_stats(d._r)
     dau_today = analytics.get_daily_active_users(d._r)
     dau_trend = analytics.get_dau_trend(d._r, days=7)
     all_users = analytics.get_user_stats(d._r, days=7)
     known_users = analytics.get_known_user_count(d._r)
+    spotify_api = analytics.get_spotify_api_stats(d._r, days=7)
+    spotify_oauth = analytics.get_spotify_oauth_stats(d._r, days=7)
 
-    # Split: my stats vs everyone else aggregated
+    # "You vs Others" only available when logged in
+    email = session.get('email')
     my_stats = {}
     others_stats = {}
     others_count = 0
     event_types = ['song_add', 'vote', 'jam', 'airhorn', 'login', 'ws_connect']
     for u in all_users:
-        if u['email'] == email:
+        if email and u['email'] == email:
             my_stats = u
         else:
             others_count += 1
             for et in event_types:
                 others_stats[et] = others_stats.get(et, 0) + u.get(et, 0)
 
-    return render_template('admin_stats.html',
+    return render_template('stats.html',
                            today=today_stats,
                            dau_count=len(dau_today),
                            dau_trend=dau_trend,
                            my_stats=my_stats,
                            others_stats=others_stats,
                            others_count=others_count,
-                           known_users=known_users)
+                           known_users=known_users,
+                           logged_in=bool(email),
+                           spotify_api=spotify_api,
+                           spotify_oauth=spotify_oauth)
+
+
+@app.route('/admin/stats')
+def admin_stats_redirect():
+    return redirect('/stats')
 
 
 # ---------------------------------------------------------------------------
@@ -1623,9 +1631,9 @@ def api_playing():
 
 
 @app.route('/api/stats', methods=['GET'])
-@require_api_token
 def api_stats():
-    """Concise JSON analytics snapshot for agents / API consumers."""
+    """Concise JSON analytics snapshot. Public for aggregate data;
+    Bearer token required to include per-user email details."""
     days = min(int(request.args.get('days', 7)), 90)
     today_stats = analytics.get_daily_stats(d._r)
     dau_today = analytics.get_daily_active_users(d._r)
@@ -1634,6 +1642,22 @@ def api_stats():
 
     spotify_api = analytics.get_spotify_api_stats(d._r, days=days)
     spotify_oauth = analytics.get_spotify_oauth_stats(d._r, days=days)
+
+    # Check if caller provided a valid API token — emails only with auth
+    authenticated = False
+    configured_token = CONF.ECHONEST_API_TOKEN
+    if configured_token:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            provided_token = auth_header[7:]
+            authenticated = secrets.compare_digest(provided_token, configured_token)
+
+    if not authenticated:
+        # Strip email addresses from stale_users, keep just the counts
+        spotify_oauth['stale_users'] = [
+            {'count': u['count'], 'date': u['date']}
+            for u in spotify_oauth.get('stale_users', [])
+        ]
 
     return jsonify(
         today=today_stats,

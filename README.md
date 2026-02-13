@@ -118,6 +118,8 @@ make test-all
 
 ## API Endpoints
 
+### Web UI Routes
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
@@ -127,6 +129,19 @@ make test-all
 | `/jam` | POST | Jam a song |
 | `/blast_airhorn` | POST | Trigger airhorn |
 | `/search/v2?q=` | GET | Search Spotify |
+| `/admin/stats` | GET | Analytics dashboard (admin-gated) |
+
+### REST API (Bearer token auth)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/queue` | GET | Queue with full metadata (votes, jams, comments, duration) |
+| `/api/playing` | GET | Now-playing with server timestamp |
+| `/api/events` | GET | SSE event stream (queue_update, now_playing, etc.) |
+| `/api/stats?days=N` | GET | Analytics: user activity, Spotify API calls, OAuth health |
+| `/api/spotify/devices` | GET | List Spotify Connect devices |
+| `/api/spotify/transfer` | POST | Transfer playback to a device |
+| `/api/spotify/status` | GET | Current playback status |
 
 ## Deployment
 
@@ -148,24 +163,38 @@ The live instance runs on a $6/month DigitalOcean droplet with:
 ┌───────────────▼─────────────────────┐
 │         Flask App (app.py)          │
 │  - OAuth (Google + Spotify)         │
-│  - REST API                         │
-│  - WebSocket (gevent)               │
+│  - REST API + WebSocket (gevent)    │
+│  - Spotify Connect device control   │
+│  - Analytics tracking               │
 └───────────────┬─────────────────────┘
                 │
 ┌───────────────▼─────────────────────┐
 │         Redis                       │
-│  - Queue data                       │
-│  - Votes & jams                     │
-│  - Session state                    │
+│  - Queue, votes, jams, sessions     │
+│  - Analytics (sorted sets + hashes) │
+│  - Nest registry + per-nest keys    │
 └───────────────┬─────────────────────┘
                 │
 ┌───────────────▼─────────────────────┐
 │    Background Worker (master_player)│
-│  - Tracks playback timing           │
-│  - Bender recommendations           │
-│  - Broadcasts queue updates         │
+│  - Playback timing + song transitions│
+│  - Bender auto-fill + preview warm  │
+│  - Nest cleanup (60s loop)          │
 └─────────────────────────────────────┘
 ```
+
+### Key Modules
+
+| File | Purpose |
+|------|---------|
+| `app.py` | Flask routes, WebSocket handlers, OAuth flows, Spotify Connect endpoints |
+| `db.py` | Redis interface (`DB` class), Bender recommendation engine, Spotify API call tracking |
+| `analytics.py` | Fire-and-forget Redis-native event tracking (user activity, Spotify API calls, OAuth health) |
+| `nests.py` | `NestManager` class, nest lifecycle helpers (`should_delete_nest`, `pubsub_channel`, etc.) |
+| `master_player.py` | Background worker: playback timing, Bender preview pre-warm, nest cleanup |
+| `history.py` | `PlayHistory` for tracking played songs (powers Throwback feature) |
+| `config.py` | YAML config loader with environment variable overrides |
+| `static/js/app.js` | Backbone.js frontend |
 
 ## History
 

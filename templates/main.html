@@ -27,18 +27,20 @@
                             data-id="other">Other</a></div>
             <div id="tabs">
                 <div id="airhorn-tab">
-                    <a href="javascript:void(0);" id="do-airhorn" class="left-button">airhorn</a>
+                    <a href="javascript:void(0);" id="do-airhorn" class="left-button">specific airhorn</a>
+                    <a href="javascript:void(0);" id="do-random-airhorn" class="left-button">random airhorn</a>
+                    <a href="javascript:void(0);" id="do-personal-airhorn" class="left-button">personal airhorn</a>
                     <div id="airhorn-history">
                     </div>
                 </div>
                 <div id="add-song-tab">
+                    <div id="uri-help">
+                        <h4>Search Spotify, or paste a Spotify, SoundCloud, or YouTube URI here.</h4>
+                    </div>
                     <form id="uri-search">
                         <input type="text" name="uri-query" id="uri-query" placeholder="search music">
                     </form>
                     <div id="search-results">
-                        <div id="uri-help">
-                            <h4>search Spotify, or paste a Spotify, SoundCloud, or YouTube URI here.</h4>
-                        </div>
                         <div id="spotify-results">
                         </div>
                         <div id="youtube-results">
@@ -46,25 +48,25 @@
                         <div id="soundcloud-results">
                         </div>
                     </div>
+                    <div id="podcast-help">
+                        <h4>Search Spotify for Podcasts.</h4>
+                    </div>
                     <form id="podcast-search">
                         <input type="text" name="podcast-query" id="podcast-query" placeholder="search podcasts">
                     </form>
                     <div id="podcast-search-results">
-                        <div id="podcast-help">
-                            <h4>search Spotify for podcasts.</h4>
-                        </div>
                         <div id="episode-results">
                         </div>
                     </div>
                 </div>
                 <div id="search-song-tab">
+                    <div id="talkie-help">
+                        <h4>Hi, I'm your new intelligent Prosecco assistant. You can ask for things like genres, moods, and other descriptors. My name's QBD and I'm a BFD.</h4>
+                    </div>
                     <form id="song-search">
                         <input type="text" name="song-query" id="song-query" placeholder="search text">
                     </form>
                     <div id="qbd-search-results">
-                        <div id="talkie-help">
-                            <h4>Hi, I'm your new intelligent Prosecco assistant. You can ask for things like genres, moods, and other descriptors. My name's QBD and I'm a BFD.</h4>
-                        </div>
                         <div id="qbd-results">
                         </div>
                     </div>
@@ -98,7 +100,7 @@
                         <span class="nest-name">This is the <strong>EchoNest</strong></span>
                     </div>
                     <div class="nest-listener-bar">
-                        <span class="nest-listener-count"><span id="nest-listener-num">--</span> listening across <span id="nest-active-count">--</span> nests</span>
+                        <span class="nest-listener-count"><span id="nest-listener-num">--</span> listening<span id="nest-across"> across <span id="nest-active-count">--</span> nests</span></span>
                     </div>
                     {% else %}
                     <div class="nest-info-section nest-name-section">
@@ -136,19 +138,15 @@
     </div>
 </script>
 <script type="underscore/template" id="confirm_airhorn">
-    <div id="confirm">
-        <h3><%-msg%></h3>
-        <select id="airhorn-dropdown">
+    <div id="airhorn-picker-backdrop"></div>
+    <div id="airhorn-picker-dialog">
+        <h3>Pick Your Airhorn</h3>
+        <div id="airhorn-picker-list">
           <% _.each(airhorns, function (airhorn, i) { %>
-            <option><%- airhorn %></option>
+            <a href="javascript:void(0)" class="airhorn-picker-item" data-name="<%- airhorn %>"><%- airhorn.replace(/_/g, ' ') %></a>
           <% }); %>
-        </select>
-        <% if(callback){ %>
-        <a href="javascript:void(0)" class="yes">Yes</a>
-        <a href="javascript:void(0)" class="no">No</a>
-        <% }else{ %>
-        <a href="javascript:void(0)" class="alert-close">Close</a>
-        <% } %>
+        </div>
+        <a href="javascript:void(0)" class="airhorn-picker-cancel">Cancel</a>
     </div>
 </script>
 <script type="underscore/template" id="search_no_results">

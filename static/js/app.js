@@ -1444,7 +1444,6 @@ function make_player(ev){
         $('#ytapiplayer').css('z-index', 900);
         // Restore sync audio button text when disconnected
         $('#sync-audio-btn').text('sync audio');
-        $('#airhorn-sync-audio').show();
         return;
     }
     if (auth_token == null) {
@@ -1467,7 +1466,6 @@ function make_player(ev){
     $('#make-player').text('disconnect audio');
     // Update echonest tab sync button, hide airhorn tab one
     $('#sync-audio-btn').text('disconnect audio');
-    $('#airhorn-sync-audio').hide();
 }
 
 function spotify_connect(url) {
@@ -1522,6 +1520,21 @@ function do_airhorn(){
         socket.emit("airhorn", airhorn_choice);
     });
 }
+function do_random_airhorn(){
+    sort_airhorns();
+    var names = _.keys(airhorn_map);
+    if (names.length === 0) return;
+    var name = names[Math.floor(Math.random() * names.length)];
+    socket.emit("airhorn", name);
+}
+function do_personal_airhorn(){
+    sort_airhorns();
+    var names = _.keys(airhorn_map);
+    if (names.length === 0) return;
+    var name = names[Math.floor(Math.random() * names.length)];
+    var localVol = localMuted ? 0 : volumeBeforeMute;
+    playSound(airhorn_map[name], localVol / 100);
+}
 function kill_playing(){
     var isPodcast = now_playing.get('type') === 'episode';
     var msg = isPodcast ? "Are you sure you want to skip this podcast?" : "Are you sure you want to skip this song?";
@@ -1542,14 +1555,19 @@ function confirm_dialog(msg, callback){
 }
 
 function confirm_airhorn(msg, callback){
+    sort_airhorns();
     $('#page-container').append(TEMPLATES.confirm_airhorn({msg:msg, callback: !!callback, airhorns: _.keys(airhorn_map)}));
-    $('#confirm a.yes').on('click', function(){
-        var airhorn_choice = $('#airhorn-dropdown').val();
-        $('#confirm').remove();
-        callback(airhorn_choice);
+    function close_picker() {
+        $('#airhorn-picker-backdrop').remove();
+        $('#airhorn-picker-dialog').remove();
+    }
+    $('.airhorn-picker-item').on('click', function(){
+        var name = $(this).data('name');
+        close_picker();
+        if (callback) callback(name);
     });
-    $('#confirm a.no, #confirm a.alert-close').on('click', function(){
-        $('#confirm').remove();
+    $('.airhorn-picker-cancel, #airhorn-picker-backdrop').on('click', function(){
+        close_picker();
     });
 }
 
@@ -2001,6 +2019,8 @@ window.addEventListener('load', function(){
     $('#do-nuke-queue').on('click', do_nuke_queue);
     $('#pause-button').on('click', pause_button);
     $('#do-airhorn').on('click', do_airhorn);
+    $('#do-random-airhorn').on('click', do_random_airhorn);
+    $('#do-personal-airhorn').on('click', do_personal_airhorn);
     $('#unpause-btn').on('click', function(){
         console.log("unpause button");
         socket.emit("unpause");
@@ -2012,7 +2032,6 @@ window.addEventListener('load', function(){
                                     playlist_result_click);
     $('#make-player').on('click', make_player);
     $('#sync-audio-btn').on('click', make_player);
-    $('#airhorn-sync-audio').on('click', make_player);
     $('#change-color').on('click', changeColors);
 
     // Load saved color theme
@@ -2047,7 +2066,12 @@ window.addEventListener('load', function(){
                         totalListeners += (n.member_count || 0);
                     });
                     $('#nest-listener-num').text(totalListeners);
-                    $('#nest-active-count').text(data.nests.length);
+                    if (data.nests.length <= 1) {
+                        $('#nest-across').hide();
+                    } else {
+                        $('#nest-active-count').text(data.nests.length);
+                        $('#nest-across').show();
+                    }
                 }
             })
             .catch(function() {});

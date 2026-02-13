@@ -270,12 +270,44 @@ float:left; width:30px; height:30px;
             padding:5px 20px; width:30px; color: #b9b9b9;}
 #confirm a:hover {text-decoration:none; background: rgba(0,0,0,0.1);}
 
+/* Airhorn picker dialog (matches nest dialog style) */
+#airhorn-picker-backdrop {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6); z-index: 99998;
+}
+#airhorn-picker-dialog {
+    width: 80%; max-width: 480px; position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgb(31, 31, 31);
+    color: #F0F0F0; z-index: 99999; text-align: center;
+    padding: 15px; box-shadow: 4px 4px 8px rgba(0,0,0,0.5);
+    max-height: 80vh; display: flex; flex-direction: column;
+    border-radius: 4px;
+}
+#airhorn-picker-dialog h3 { margin: 0 0 8px; flex-shrink: 0; }
+#airhorn-picker-list {
+    overflow-y: auto; flex: 1; min-height: 0;
+}
+.airhorn-picker-item {
+    display: block; padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    color: #F0F0F0; text-decoration: none; cursor: pointer;
+    font-size: 14px; text-transform: capitalize;
+}
+.airhorn-picker-item:hover { background: rgba(255,255,255,0.06); text-decoration: none; }
+.airhorn-picker-cancel {
+    display: inline-block; background: rgba(255,255,255,0.2);
+    padding: 5px 20px; color: #b9b9b9; margin-top: 10px; flex-shrink: 0;
+    text-decoration: none; border-radius: 3px;
+}
+.airhorn-picker-cancel:hover { text-decoration: none; background: rgba(0,0,0,0.1); }
+
 #nest-join-backdrop {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.6); z-index: 99998;
 }
 #nest-join-dialog {
-    width: 80%; position: fixed; top: 50%; left: 50%;
+    width: 80%; max-width: 480px; position: fixed; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     background: rgb(31, 31, 31);
     color: #F0F0F0; z-index: 99999; text-align: center;
@@ -331,7 +363,7 @@ float:left; width:30px; height:30px;
     background: rgba(0,0,0,0.6); z-index: 99998;
 }
 #nest-create-dialog {
-    width: 80%; position: fixed; top: 50%; left: 50%;
+    width: 80%; max-width: 480px; position: fixed; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     background: rgb(31, 31, 31);
     color: #F0F0F0; z-index: 99999; text-align: left;
