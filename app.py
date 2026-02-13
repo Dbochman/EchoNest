@@ -550,6 +550,7 @@ class MusicNamespace(WebSocketManager):
                                                 time_left=int(token['expires_at'] - time.time())))
         else:
             logger.debug("refresh")
+            analytics.track(self.db._r, 'spotify_oauth_stale', self.email)
             self.emit('auth_token_refresh', self.auth.get_authorize_url())
 
     def on_fetch_airhorns(self):
@@ -923,6 +924,7 @@ def spotify_authorize():
     email = session.get('email')
     if not email:
         return redirect('/login/')
+    analytics.track(d._r, 'spotify_oauth_reconnect', email)
     cache_path = "%s/%s" % (CONF.OAUTH_CACHE_PATH, email)
     if request.args.get('force') == '1':
         try:
@@ -946,6 +948,7 @@ def spotify_callback():
     auth = spotipy.oauth2.SpotifyOAuth(CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
                                        "prosecco:%s" % session['email'], scope="streaming user-read-currently-playing user-read-playback-state user-modify-playback-state", cache_path="%s/%s" % (CONF.OAUTH_CACHE_PATH, session['email']))
     auth.get_access_token(request.values['code'])
+    analytics.track(d._r, 'spotify_oauth_refresh', session['email'])
     return redirect('/spotify_connect/')
 
 USEFUL_PROPS = ('artist', 'big_img', 'id', 'img', 'src', 'title', 'trackid', 'user',)
@@ -1173,11 +1176,13 @@ def search_spotify():
 
     try:
         search_result = sp.search(q, 25)
+        analytics.track(d._r, 'spotify_api_search')
     except spotipy.exceptions.SpotifyException as e:
         if handle_spotify_exception(e):
             resp = jsonify({"error": "Spotify rate limited. Please try again later."})
             resp.status_code = 429
             return resp
+        analytics.track(d._r, 'spotify_api_error')
         raise
 
     parsed_result = []
@@ -1515,6 +1520,7 @@ def _get_spotify_client():
 
     token_info = sp_auth.get_cached_token()
     if not token_info:
+        analytics.track(d._r, 'spotify_oauth_stale', email)
         return None, "No cached Spotify token for %s — visit the web UI and click 'sync audio' first" % email
 
     return spotipy.Spotify(auth=token_info['access_token']), None
@@ -1527,8 +1533,11 @@ def api_spotify_devices():
     if sp is None:
         return jsonify(error=err), 503
     try:
-        return jsonify(sp.devices())
+        result = sp.devices()
+        analytics.track(d._r, 'spotify_api_devices')
+        return jsonify(result)
     except spotipy.exceptions.SpotifyException as e:
+        analytics.track(d._r, 'spotify_api_error')
         logger.error("Spotify devices error: %s", e)
         return jsonify(error=str(e)), 502
 
@@ -1548,8 +1557,10 @@ def api_spotify_transfer():
     play = body.get('play', True)
     try:
         sp.transfer_playback(device_id, force_play=bool(play))
+        analytics.track(d._r, 'spotify_api_transfer')
         return jsonify(ok=True)
     except spotipy.exceptions.SpotifyException as e:
+        analytics.track(d._r, 'spotify_api_error')
         logger.error("Spotify transfer error: %s", e)
         return jsonify(error=str(e)), 502
 
@@ -1562,8 +1573,10 @@ def api_spotify_status():
         return jsonify(error=err), 503
     try:
         playback = sp.current_playback()
+        analytics.track(d._r, 'spotify_api_status')
         return jsonify(playback)
     except spotipy.exceptions.SpotifyException as e:
+        analytics.track(d._r, 'spotify_api_error')
         logger.error("Spotify status error: %s", e)
         return jsonify(error=str(e)), 502
 
@@ -1619,11 +1632,16 @@ def api_stats():
     dau_trend = analytics.get_dau_trend(d._r, days=days)
     known_users = analytics.get_known_user_count(d._r)
 
+    spotify_api = analytics.get_spotify_api_stats(d._r, days=days)
+    spotify_oauth = analytics.get_spotify_oauth_stats(d._r, days=days)
+
     return jsonify(
         today=today_stats,
         dau=len(dau_today),
         dau_trend=[{'date': date, 'users': count} for date, count in dau_trend],
         known_users=known_users,
+        spotify_api=spotify_api,
+        spotify_oauth=spotify_oauth,
     )
 
 

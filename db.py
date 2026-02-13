@@ -137,6 +137,11 @@ def handle_spotify_exception(e):
         if hasattr(e, 'headers') and e.headers:
             retry_after = int(e.headers.get('Retry-After', 3600))
         set_spotify_rate_limit(retry_after)
+        try:
+            r = _get_rate_limit_redis()
+            analytics.track(r, 'spotify_api_rate_limited')
+        except Exception:
+            pass
         return True
     return False
 
@@ -336,6 +341,7 @@ class DB(object):
 
         try:
             song_deets = spotify_client.track(track_id)
+            analytics.track(self._r, 'spotify_api_track')
             artists = song_deets.get('artists', [])
             if not artists:
                 return None
@@ -345,10 +351,12 @@ class DB(object):
 
             # Fetch genres from artist endpoint
             artist_data = spotify_client.artist(artist_id)
+            analytics.track(self._r, 'spotify_api_artist')
             genres = artist_data.get('genres', [])
         except Exception as e:
             if handle_spotify_exception(e):
                 return None
+            analytics.track(self._r, 'spotify_api_error')
             logger.warning("Error getting seed info for %s: %s", track_id, e)
             return None
 
@@ -502,10 +510,12 @@ class DB(object):
         try:
             results = spotify_client.search(q='genre:"%s"' % genre, type='track',
                                             limit=limit, market=market)
+            analytics.track(self._r, 'spotify_api_search')
             return [t['uri'] for t in results.get('tracks', {}).get('items', [])]
         except Exception as e:
             if handle_spotify_exception(e):
                 return []
+            analytics.track(self._r, 'spotify_api_error')
             logger.warning("Error fetching genre tracks for '%s': %s", genre, e)
             return []
 
@@ -519,10 +529,12 @@ class DB(object):
         try:
             results = spotify_client.search(artist_name, limit=limit,
                                             type='track', market=market)
+            analytics.track(self._r, 'spotify_api_search')
             return [t['uri'] for t in results.get('tracks', {}).get('items', [])]
         except Exception as e:
             if handle_spotify_exception(e):
                 return []
+            analytics.track(self._r, 'spotify_api_error')
             logger.warning("Error searching for artist '%s': %s", artist_name, e)
             return []
 
@@ -535,10 +547,12 @@ class DB(object):
             return []
         try:
             result = spotify_client.artist_top_tracks(artist_id, country=market)
+            analytics.track(self._r, 'spotify_api_top_tracks')
             return [t['uri'] for t in result.get('tracks', [])]
         except Exception as e:
             if handle_spotify_exception(e):
                 return []
+            analytics.track(self._r, 'spotify_api_error')
             logger.warning("Error getting top tracks for artist %s: %s", artist_id, e)
             return []
 
@@ -551,10 +565,12 @@ class DB(object):
             return []
         try:
             result = spotify_client.album_tracks(album_id)
+            analytics.track(self._r, 'spotify_api_album_tracks')
             return [t['uri'] for t in result.get('items', [])]
         except Exception as e:
             if handle_spotify_exception(e):
                 return []
+            analytics.track(self._r, 'spotify_api_error')
             logger.warning("Error getting album tracks for %s: %s", album_id, e)
             return []
 
@@ -1196,8 +1212,10 @@ class DB(object):
             'https://api.spotify.com/v1/tracks/'+trackid.split(':')[-1],
             headers={'Authorization': 'Bearer ' + str(token)},
             timeout=10)
+        analytics.track(self._r, 'spotify_api_get_track')
 
         if resp.status_code != 200:
+            analytics.track(self._r, 'spotify_api_error')
             logger.error("Spotify API HTTP error %d fetching track %s", resp.status_code, trackid)
             raise Exception(f"Spotify API error: HTTP {resp.status_code}")
 
@@ -1205,6 +1223,7 @@ class DB(object):
 
         # Check for API errors in response body
         if 'error' in response:
+            analytics.track(self._r, 'spotify_api_error')
             logger.error("Spotify API error fetching track %s: %s", trackid, response.get('error'))
             raise Exception(f"Spotify API error: {response.get('error', {}).get('message', 'Unknown error')}")
 
@@ -1252,8 +1271,10 @@ class DB(object):
             'https://api.spotify.com/v1/episodes/' + episode_id,
             headers={'Authorization': 'Bearer ' + str(token)},
             timeout=10)
+        analytics.track(self._r, 'spotify_api_get_episode')
 
         if resp.status_code != 200:
+            analytics.track(self._r, 'spotify_api_error')
             logger.error("Spotify API HTTP error %d fetching episode %s", resp.status_code, episode_id)
             raise Exception(f"Spotify API error: HTTP {resp.status_code}")
 
@@ -1261,6 +1282,7 @@ class DB(object):
 
         # Check for API errors
         if 'error' in response:
+            analytics.track(self._r, 'spotify_api_error')
             logger.error("Spotify API error fetching episode %s: %s", episode_id, response.get('error'))
             raise Exception(f"Spotify API error: {response.get('error', {}).get('message', 'Unknown error')}")
 
