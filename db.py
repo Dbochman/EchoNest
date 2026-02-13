@@ -1738,6 +1738,9 @@ class DB(object):
 
     def kill_playing(self, email):
         self._check_nest_active()
+        if self.nest_id == "main":
+            playing = self.get_now_playing()
+            slack.notify_skip(email, playing.get('title', ''), playing.get('artist', '') if playing else '')
         self._r.set(self._key('MISC|force-jump'), 1)
 
     def pause(self, email):

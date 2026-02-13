@@ -90,6 +90,11 @@ def notify_pause(user):
     post(f"\u23f8\ufe0f {user} paused playback.")
 
 
+def notify_skip(user, song_title, song_artist):
+    """Post when a song is skipped."""
+    post(f"\u23ed\ufe0f {user} skipped *{song_title}* by *{song_artist}*")
+
+
 def notify_unpause(user):
     """Post when playback is unpaused."""
     post(f"\u25b6\ufe0f {user} unpaused playback.")
