@@ -19,6 +19,7 @@ class TestAuthGate:
         if os.environ.get('SKIP_SPOTIFY_PREFETCH'):
             pytest.skip('Skipping due to SKIP_SPOTIFY_PREFETCH')
 
+        import app as app_module
         from app import app, CONF
 
         app.config['TESTING'] = True
@@ -32,18 +33,18 @@ class TestAuthGate:
 
         original_hostname = getattr(CONF, 'HOSTNAME', None)
         original_dev_email = getattr(CONF, 'DEV_AUTH_EMAIL', None)
-        original_db = getattr(app, 'd', None)
+        original_db = getattr(app_module, 'd', None)
         try:
             setattr(CONF, 'HOSTNAME', '')
             setattr(CONF, 'DEV_AUTH_EMAIL', None)
-            setattr(app, 'd', _DummyDB())
+            setattr(app_module, 'd', _DummyDB())
             with app.test_client() as client:
                 yield client
         finally:
             setattr(CONF, 'HOSTNAME', original_hostname)
             setattr(CONF, 'DEV_AUTH_EMAIL', original_dev_email)
             if original_db is not None:
-                setattr(app, 'd', original_db)
+                setattr(app_module, 'd', original_db)
 
     def test_health_endpoint_public(self, client):
         """Health endpoint should be accessible without auth."""

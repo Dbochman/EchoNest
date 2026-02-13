@@ -27,6 +27,7 @@ from flask_assets import Environment, Bundle
 from config import CONF
 from db import DB, is_spotify_rate_limited, set_spotify_rate_limit, handle_spotify_exception
 from nests import pubsub_channel, NestManager, refresh_member_ttl, member_key, members_key
+import analytics
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -336,9 +337,11 @@ class MusicNamespace(WebSocketManager):
                 logger.exception('Failed to join nest %s', nest_id)
         self.spawn(self.listener)
         self.log('New namespace for {0} (nest={1})'.format(self.email, self.nest_id))
+        analytics.track(self.db._r, 'ws_connect', self.email)
 
     def _on_disconnect(self):
         """Leave nest on WebSocket disconnect."""
+        analytics.track(self.db._r, 'ws_disconnect', self.email)
         if nest_manager:
             try:
                 nest_manager.leave_nest(self.nest_id, self.email)
@@ -498,17 +501,21 @@ class MusicNamespace(WebSocketManager):
 
     def on_add_song(self, song_id, src):
         logger.info('on_add_song called: song_id=%s, src=%s, email=%s', song_id, src, self.email)
+        result = None
         if src == 'spotify':
             self.log(
                 'add_spotify_song "{0}" "{1}"'.format(self.email, song_id))
-            self._safe_db_call(self.db.add_spotify_song, self.email, song_id, penalty=self.penalty)
+            result = self._safe_db_call(self.db.add_spotify_song, self.email, song_id, penalty=self.penalty)
         elif src == 'youtube':
             logger.info('Adding YouTube song: %s for user %s', song_id, self.email)
-            self._safe_db_call(self.db.add_youtube_song, self.email, song_id, penalty=self.penalty)
+            result = self._safe_db_call(self.db.add_youtube_song, self.email, song_id, penalty=self.penalty)
         elif src == 'soundcloud':
             self.log(
                 'add_soundcloud_song "{0}" "{1}"'.format(self.email, song_id))
-            self._safe_db_call(self.db.add_soundcloud_song, self.email, song_id, penalty=self.penalty)
+            result = self._safe_db_call(self.db.add_soundcloud_song, self.email, song_id, penalty=self.penalty)
+
+        if result not in (None, False):
+            analytics.track(self.db._r, 'song_add', self.email)
 
     def on_fetch_playlist(self):
         self.emit('playlist_update', self.db.get_queued())
@@ -550,7 +557,8 @@ class MusicNamespace(WebSocketManager):
 
     def on_vote(self, id, up):
         self.log('Vote from {0} on {1} {2}'.format(self.email, id, up))
-        self._safe_db_call(self.db.vote, self.email, id, up)
+        if self._safe_db_call(self.db.vote, self.email, id, up) not in (None, False):
+            analytics.track(self.db._r, 'vote', self.email)
 
     def on_kill(self, id):
         self.log('Kill {0} ({2}) from {1}'.format(id, self.email, self.db.get_song_from_queue(id).get('user')))
@@ -566,7 +574,8 @@ class MusicNamespace(WebSocketManager):
 
     def on_airhorn(self, name):
         self.log('Airhorn {0}, {1}'.format(self.email, name))
-        self._safe_db_call(self.db.airhorn, self.email, name=name)
+        if self._safe_db_call(self.db.airhorn, self.email, name=name) not in (None, False):
+            analytics.track(self.db._r, 'airhorn', self.email)
 
     def on_free_airhorn(self):
         self.log('Free Airhorn {0}'.format(self.email))
@@ -582,7 +591,8 @@ class MusicNamespace(WebSocketManager):
 
     def on_jam(self, id):
         self.log('{0} jammed {1}'.format(self.email, id))
-        self._safe_db_call(self.db.jam, id, self.email)
+        if self._safe_db_call(self.db.jam, id, self.email) not in (None, False):
+            analytics.track(self.db._r, 'jam', self.email)
 
     def on_benderQueue(self, id):
         self.log('{0} benderqueues {1}'.format(self.email, id))
@@ -882,6 +892,7 @@ def auth_callback():
     for k1, k2 in (('email', 'email',), ('fullname', 'name'),):
         session[k1] = user[k2]
 
+    analytics.track(d._r, 'login', email)
     return redirect('/')
 
 
@@ -1063,6 +1074,7 @@ def signup():
 
     session['email'] = email
     session['fullname'] = 'Guest'
+    analytics.track(d._r, 'signup', email)
     return redirect('/')
 
 
@@ -1311,6 +1323,51 @@ def airhorn_list():
 
 
 # ---------------------------------------------------------------------------
+# Admin stats dashboard
+# ---------------------------------------------------------------------------
+
+def _is_admin(email):
+    admin_emails = CONF.ADMIN_EMAILS or []
+    if isinstance(admin_emails, str):
+        admin_emails = [e.strip() for e in admin_emails.split(',')]
+    return email in admin_emails
+
+
+@app.route('/admin/stats')
+def admin_stats():
+    email = session.get('email')
+    if not email or not _is_admin(email):
+        return redirect('/')
+    today_stats = analytics.get_daily_stats(d._r)
+    dau_today = analytics.get_daily_active_users(d._r)
+    dau_trend = analytics.get_dau_trend(d._r, days=7)
+    all_users = analytics.get_user_stats(d._r, days=7)
+    known_users = analytics.get_known_user_count(d._r)
+
+    # Split: my stats vs everyone else aggregated
+    my_stats = {}
+    others_stats = {}
+    others_count = 0
+    event_types = ['song_add', 'vote', 'jam', 'airhorn', 'login', 'ws_connect']
+    for u in all_users:
+        if u['email'] == email:
+            my_stats = u
+        else:
+            others_count += 1
+            for et in event_types:
+                others_stats[et] = others_stats.get(et, 0) + u.get(et, 0)
+
+    return render_template('admin_stats.html',
+                           today=today_stats,
+                           dau_count=len(dau_today),
+                           dau_trend=dau_trend,
+                           my_stats=my_stats,
+                           others_stats=others_stats,
+                           others_count=others_count,
+                           known_users=known_users)
+
+
+# ---------------------------------------------------------------------------
 # REST API (token-authenticated, for programmatic access e.g. OpenClaw)
 # ---------------------------------------------------------------------------
 
@@ -1540,6 +1597,24 @@ def api_queue():
 @require_api_token
 def api_playing():
     return jsonify(**_serialize_playing())
+
+
+@app.route('/api/stats', methods=['GET'])
+@require_api_token
+def api_stats():
+    """Concise JSON analytics snapshot for agents / API consumers."""
+    days = min(int(request.args.get('days', 7)), 90)
+    today_stats = analytics.get_daily_stats(d._r)
+    dau_today = analytics.get_daily_active_users(d._r)
+    dau_trend = analytics.get_dau_trend(d._r, days=days)
+    known_users = analytics.get_known_user_count(d._r)
+
+    return jsonify(
+        today=today_stats,
+        dau=len(dau_today),
+        dau_trend=[{'date': date, 'users': count} for date, count in dau_trend],
+        known_users=known_users,
+    )
 
 
 @app.route('/api/events', methods=['GET'])

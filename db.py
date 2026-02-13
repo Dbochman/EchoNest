@@ -21,6 +21,7 @@ import spotipy.oauth2, spotipy.client
 from flask import render_template
 from config import CONF
 from history import PlayHistory
+import analytics
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -1865,6 +1866,7 @@ class DB(object):
         self._r.set(self._key('MISC|last-played'), song_json)
         _log_play(song_json)
         self._h.add_play(song_json)
+        analytics.track(self._r, 'song_finish')
 
     def get_historian(self):
         return self._h
