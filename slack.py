@@ -4,6 +4,7 @@ Posts deploy alerts, now-playing updates, and airhorn events to a Slack channel.
 If SLACK_WEBHOOK_URL is not configured, all functions are silent no-ops.
 """
 
+import json
 import logging
 import threading
 
@@ -42,6 +43,30 @@ def notify_deploy():
     post("\U0001f504 EchoNest is restarting \u2014 you may need to resync audio.")
 
 
+def _track_url(song):
+    """Build a Spotify track URL from the song's trackid."""
+    trackid = song.get('trackid', '')
+    if trackid:
+        track_id = trackid.split(':')[-1]
+        return f"https://open.spotify.com/track/{track_id}"
+    return ''
+
+
+def _artist_url(song):
+    """Extract the first artist's Spotify URL from the raw API data."""
+    data = song.get('data', '')
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except (json.JSONDecodeError, TypeError):
+            return ''
+    if isinstance(data, dict):
+        artists = data.get('artists', [])
+        if artists:
+            return artists[0].get('external_urls', {}).get('spotify', '')
+    return ''
+
+
 def notify_now_playing(song):
     """Post now-playing update with album art, title, artist, who added it."""
     if not song or not _get_url():
@@ -52,12 +77,18 @@ def notify_now_playing(song):
     user = song.get('user', '')
     img = song.get('img', '')
 
-    text = f"\U0001f3b5 Now Playing: *{title}* by *{artist}*\nAdded by {user}"
+    track_link = _track_url(song)
+    artist_link = _artist_url(song)
+
+    title_display = f"<{track_link}|{title}>" if track_link else f"*{title}*"
+    artist_display = f"<{artist_link}|{artist}>" if artist_link else f"*{artist}*"
+
+    text = f"\U0001f3b5 Now Playing: {title} by {artist}\nAdded by {user}"
 
     elements = [
         {
             'type': 'mrkdwn',
-            'text': f"\U0001f3b5 Now Playing: *{title}* by *{artist}* \u2014 Added by {user}",
+            'text': f"\U0001f3b5 Now Playing: *{title_display}* by *{artist_display}* \u2014 Added by {user}",
         },
     ]
 
