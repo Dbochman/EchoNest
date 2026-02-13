@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "echonest-sync"
+version = "0.1.0"
+description = "CLI agent that syncs your local Spotify with an EchoNest server"
+requires-python = ">=3.9"
+dependencies = [
+    "requests",
+    "sseclient-py",
+    "click",
+    "pyyaml",
+]
+
+[project.scripts]
+echonest-sync = "echonest_sync.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
