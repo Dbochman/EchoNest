@@ -230,10 +230,6 @@ def should_delete_nest(metadata, members, queue_size, now):
     if members > 0:
         return False
 
-    # Don't delete if there are songs in the queue
-    if queue_size > 0:
-        return False
-
     # Check inactivity timeout
     last_activity_str = metadata.get("last_activity")
     ttl_minutes = metadata.get("ttl_minutes", getattr(CONF, 'NEST_MAX_INACTIVE_MINUTES', 5))

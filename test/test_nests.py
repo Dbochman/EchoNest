@@ -678,7 +678,8 @@ class TestNestCleanupLogic:
         }
         assert helper(metadata, members=0, queue_size=0, now=now) is True
         assert helper(metadata, members=1, queue_size=0, now=now) is False
-        assert helper(metadata, members=0, queue_size=1, now=now) is False
+        # Queue songs don't prevent cleanup when TTL expired and no members
+        assert helper(metadata, members=0, queue_size=1, now=now) is True
 
         metadata["is_main"] = True
         assert helper(metadata, members=0, queue_size=0, now=now) is False
