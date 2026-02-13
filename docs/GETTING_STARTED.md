@@ -85,6 +85,10 @@ Nests are separate listening rooms with their own queues. Think of them as break
 
 Each Nest has its own queue, votes, and now-playing state. You can provide a seed track url with a name to influence bender's suggestions.
 
+## Profile Pictures
+
+Your profile picture comes from [Gravatar](https://gravatar.com) based on your Google sign-in email. To set one, create a free Gravatar account with the same email and upload a photo. If you don't have a Gravatar, you'll get a randomly generated monster avatar.
+
 ## Other Options
 
 The **Other** tab has additional controls:
