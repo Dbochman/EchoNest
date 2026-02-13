@@ -893,7 +893,17 @@ def auth_callback():
         session[k1] = user[k2]
 
     analytics.track(d._r, 'login', email)
-    return redirect('/')
+
+    # If already linked to Spotify, go home; otherwise prompt to connect.
+    cache_path = "%s/%s" % (CONF.OAUTH_CACHE_PATH, email)
+    sp_auth = spotipy.oauth2.SpotifyOAuth(
+        CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
+        "prosecco:%s" % email,
+        scope="streaming user-read-currently-playing user-read-playback-state user-modify-playback-state",
+        cache_path=cache_path)
+    if sp_auth.get_cached_token():
+        return redirect('/')
+    return render_template('spotify_prompt.html', email=email)
 
 
 @app.route('/logout/')
@@ -909,16 +919,16 @@ def spotify_connect():
 
 @app.route('/spotify_connect/authorize')
 def spotify_authorize():
-    """Delete cached Spotify token and redirect to OAuth for fresh auth."""
+    """Redirect to Spotify OAuth; clear cache only when force=1."""
     email = session.get('email')
     if not email:
         return redirect('/login/')
     cache_path = "%s/%s" % (CONF.OAUTH_CACHE_PATH, email)
-    # Remove stale token so user always gets a fresh OAuth flow
-    try:
-        os.remove(cache_path)
-    except OSError:
-        pass
+    if request.args.get('force') == '1':
+        try:
+            os.remove(cache_path)
+        except OSError:
+            pass
     auth = spotipy.oauth2.SpotifyOAuth(
         CONF.SPOTIFY_CLIENT_ID, CONF.SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
         "prosecco:%s" % email,

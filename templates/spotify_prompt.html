@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>EchoNest - Connect Spotify</title>
+        <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css" type="text/css">
+        <link rel="shortcut icon" href="/static/favicon.png">
+        <style>
+            body { background: #1a1a2e; color: #eee; }
+            .prompt-container {
+                max-width: 440px;
+                margin: 80px auto;
+                text-align: center;
+            }
+            .prompt-container h1 { margin-bottom: 10px; }
+            .prompt-container p.subtitle { color: #aaa; margin-bottom: 30px; }
+            .checklist {
+                text-align: left;
+                margin: 0 auto 30px;
+                max-width: 320px;
+                color: #ccc;
+                line-height: 2;
+            }
+            .btn-spotify {
+                display: block;
+                width: 100%;
+                padding: 12px;
+                font-size: 16px;
+                background: #1DB954;
+                color: #fff;
+                border: none;
+                border-radius: 4px;
+                margin-bottom: 12px;
+                text-decoration: none;
+            }
+            .btn-spotify:hover { background: #1ed760; color: #fff; text-decoration: none; }
+            .btn-skip {
+                color: #666;
+                font-size: 13px;
+            }
+            .btn-skip:hover { color: #aaa; }
+        </style>
+    </head>
+    <body>
+        <div class="prompt-container">
+            <h1>You're in!</h1>
+            <p class="subtitle">One more step to start listening.</p>
+
+            <div class="checklist">
+                <div>&#10003; Signed in as <strong>{{ email }}</strong></div>
+                <div>&#9654; Connect your Spotify account next</div>
+            </div>
+
+            <p style="color: #aaa; font-size: 13px; margin-bottom: 24px;">
+                Make sure Spotify is open on this device.<br>
+                Spotify Premium is required for playback.
+            </p>
+
+            <a href="/spotify_connect/authorize" class="btn-spotify">Connect Spotify</a>
+            <a href="/" class="btn-skip">Skip for now</a>
+        </div>
+    </body>
+</html>
