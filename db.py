@@ -1044,6 +1044,7 @@ class DB(object):
                     'dailymix@spotify.com' : '/static/DM.png',
                     'joeyd@spotify.com' : '/static/image.png',
 		    'johndoelp@spotify.com' : '/static/wiggleface.gif',
+		    'doelpj@gmail.com' : '/static/wiggleface.gif',
                     'jsteinbach@spotify.com': '/static/bender_fur.jpg'}
         if userid in static:
             return static[userid]
