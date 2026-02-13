@@ -96,7 +96,7 @@ The **Other** tab has additional controls:
 | **Change Colors** | Cycles through nine color themes. |
 | **Hide Shame** | Replaces everyone's profile pictures (including yours) with anonymous avatars. |
 | **Skip Playing Song** | Skips the currently playing track. |
-| **Mute** | Mutes your local audio. |
+
 | **Clear Queue** | Removes all songs from the queue. Use with caution. |
 | **Pause/Unpause Everything** | Toggles paused state for everyone. |
 
