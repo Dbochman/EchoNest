@@ -27,7 +27,6 @@
                             data-id="other">Other</a></div>
             <div id="tabs">
                 <div id="airhorn-tab">
-                    <a href="javascript:void(0);" id="airhorn-unpause-btn" class="left-button" style="display:none;">unpause everything</a>
                     <a href="javascript:void(0);" id="do-airhorn" class="left-button">airhorn</a>
                     <a href="javascript:void(0);" id="airhorn-sync-audio" class="left-button sync-audio-btn">Sync Audio</a>
                     <div id="airhorn-history">
@@ -89,6 +88,7 @@
                     <a href="/logout/" class="left-button">log out {{session.email.split('@')[0]}}</a>
                 </div>
                 <div id="echonest-tab" class="visible">
+                    <a href="javascript:void(0);" id="unpause-btn" class="left-button" style="display:none;">unpause everything</a>
                     <a href="javascript:void(0);" id="sync-audio-btn" class="left-button sync-audio-btn">Sync Audio</a>
                     {% if is_main_nest %}
                     <a href="javascript:void(0);" id="nest-build" class="left-button">Build a Nest</a>

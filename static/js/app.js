@@ -729,11 +729,11 @@ socket.on('now_playing_update', function(data){
     // Update button states
     if (playerpaused) {
         $('#pause-button').text('unpause everything');
-        $('#airhorn-unpause-btn').show();
+        $('#unpause-btn').show();
         document.title = "PAUSED | EchoNest";
     } else {
         $('#pause-button').text('pause everything');
-        $('#airhorn-unpause-btn').hide();
+        $('#unpause-btn').hide();
         // If transitioning from paused to unpaused, resume Spotify
         if (wasPaused && is_player) {
             resume_spotify_if_needed();
@@ -2001,8 +2001,8 @@ window.addEventListener('load', function(){
     $('#do-nuke-queue').on('click', do_nuke_queue);
     $('#pause-button').on('click', pause_button);
     $('#do-airhorn').on('click', do_airhorn);
-    $('#airhorn-unpause-btn').on('click', function(){
-        console.log("unpause button (from airhorn area)");
+    $('#unpause-btn').on('click', function(){
+        console.log("unpause button");
         socket.emit("unpause");
     });
     $('#kill-playing').on('click', kill_playing);
