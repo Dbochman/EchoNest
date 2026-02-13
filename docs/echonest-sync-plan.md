@@ -119,15 +119,16 @@ def sync_loop(server_url, token):
         except (requests.ConnectionError, requests.Timeout):
             time.sleep(5)  # backoff and reconnect
 
+def _parse_iso(s):
+    """Parse ISO timestamp string to epoch seconds (Python < 3.11 safe)."""
+    return datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
+
 def calculate_elapsed(data):
     """Calculate how many seconds into the track the server is."""
-    starttime = data.get('starttime', 0)
+    starttime = data.get('starttime', '')
     server_now = data.get('now', '')
     if server_now and starttime:
-        # Handle trailing Z (Python < 3.11 compat) and ensure UTC
-        server_now = server_now.replace('Z', '+00:00')
-        now_ts = datetime.fromisoformat(server_now).timestamp()
-        return max(0, now_ts - starttime)
+        return max(0, _parse_iso(server_now) - _parse_iso(starttime))
     return 0
 
 def play_track(uri):
