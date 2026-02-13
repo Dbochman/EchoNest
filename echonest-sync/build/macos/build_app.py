@@ -31,6 +31,9 @@ def build():
         # Info.plist
         "--info-plist", os.path.join(BUILD_DIR, "Info.plist"),
 
+        # App icon
+        "--icon", os.path.join(ROOT, "resources", "icon.icns"),
+
         # Resources
         "--add-data", os.path.join(ROOT, "resources") + ":resources",
 

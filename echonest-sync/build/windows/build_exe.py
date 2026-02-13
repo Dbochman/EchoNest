@@ -24,6 +24,9 @@ def build():
         "--windowed",                    # no console window
         "--noconfirm",                   # overwrite without asking
 
+        # App icon
+        "--icon", os.path.join(ROOT, "resources", "icon.ico"),
+
         # Resources
         "--add-data", os.path.join(ROOT, "resources") + ";resources",
 
