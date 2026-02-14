@@ -1,5 +1,7 @@
 """Audio caching and cross-platform playback for airhorn sounds."""
 
+from __future__ import annotations
+
 import logging
 import os
 import platform
