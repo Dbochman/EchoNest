@@ -71,13 +71,13 @@ class EchoNestSync(rumps.App):
             self.status_item,
             self.track_item,
             self.queue_item,
-            None,  # separator
             self.open_item,
+            None,  # separator
             self.airhorn_item,
             self.search_item,
-            self.link_item,
             self.pause_item,
             None,
+            self.link_item,
             self.update_item,
             self.autostart_item,
             None,

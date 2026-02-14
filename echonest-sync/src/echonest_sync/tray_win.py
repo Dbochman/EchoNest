@@ -78,8 +78,8 @@ class EchoNestSyncTray:
                 self._focus_spotify),
             pystray.MenuItem("Up Next", pystray.Menu(
                 lambda: self._queue_menu_items())),
-            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open EchoNest", self._open_echonest),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 lambda _: f"Airhorns: {'On' if self._airhorn_enabled else 'Off'}",
                 self._toggle_airhorn),
@@ -88,13 +88,13 @@ class EchoNestSyncTray:
                 self._open_search,
                 enabled=lambda _: bool(self._linked_email)),
             pystray.MenuItem(
-                lambda _: f"Linked: {self._linked_email}" if self._linked_email else "Link Account",
-                self._open_link,
-                enabled=lambda _: not self._linked_email),
-            pystray.MenuItem(
                 lambda _: "Resume Sync" if self._sync_paused else "Pause Sync",
                 self._toggle_pause),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                lambda _: f"Linked: {self._linked_email}" if self._linked_email else "Link Account",
+                self._open_link,
+                enabled=lambda _: not self._linked_email),
             pystray.MenuItem(
                 lambda _: self._update_text,
                 self._check_updates),
