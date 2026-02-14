@@ -472,20 +472,28 @@ Date.prototype.timeNow = function(){
   return hours + ":" + minutes + " " + (this.getHours() >= 12 ? "PM" : "AM");
 };
 
+var _playlistRetryTimer = null;
+
 function update_playlist(data) {
+    // Clear any pending retry so stale data doesn't re-render
+    if (_playlistRetryTimer) {
+        clearTimeout(_playlistRetryTimer);
+        _playlistRetryTimer = null;
+    }
+
     // calc ETA times before we render
     var start = new Date();
 
     if (!isNaN(remaining) && remaining > 0) {
       start.setTime(start.getTime() + remaining*1000);
-    } else {
-      // on first load, update_playlist will happen before we have
-      // a player position. so, we setTimeout and then update clocks
-      // again. it's a little hinky and I'm not crazy about the way
-      // it looks when there's a song transition
-      setTimeout(update_playlist, 1000, data);
+    } else if (!playerpaused) {
+      // On first load (not paused), update_playlist may arrive before we have
+      // a player position. Retry once after 1s to pick up the position.
+      _playlistRetryTimer = setTimeout(update_playlist, 1000, data);
       remaining = -1;
-    } 
+    }
+    // When paused, skip the retry — no player_position updates are coming,
+    // so retrying would just loop with stale data and cause flickering.
 
     for (var i = 0; i < data.length; i++) {
       obj = data[i];
