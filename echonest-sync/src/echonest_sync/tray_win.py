@@ -49,10 +49,11 @@ def _load_icon(color):
 
 
 class EchoNestSyncTray:
-    def __init__(self, channel, server=None, token=None):
+    def __init__(self, channel, server=None, token=None, email=None):
         self.channel = channel
         self._server = server
         self._token = token
+        self._linked_email = email
 
         # State
         self._sync_paused = False
@@ -86,6 +87,10 @@ class EchoNestSyncTray:
             pystray.MenuItem("Spotify Devices", pystray.Menu(
                 lambda: self._devices_menu_items())),
             pystray.MenuItem("Search & Add Song", self._open_search),
+            pystray.MenuItem(
+                lambda _: f"Linked: {self._linked_email}" if self._linked_email else "Link Account",
+                self._open_link,
+                enabled=lambda _: not self._linked_email),
             pystray.MenuItem(
                 lambda _: "Resume Sync" if self._sync_paused else "Pause Sync",
                 self._toggle_pause),
@@ -282,6 +287,22 @@ class EchoNestSyncTray:
         elif etype == "transfer_failed":
             error = kw.get("error", "Unknown error")
             self._notify("EchoNest Sync", f"Transfer failed: {error}")
+
+        elif etype == "account_linked":
+            email = kw.get("email", "")
+            if email:
+                self._linked_email = email
+
+    def _open_link(self):
+        if self._server and self._token and not self._linked_email:
+            import webbrowser as wb
+            wb.open(f"{self._server}/sync/link")
+            from .link import launch_link
+
+            def _on_linked(result):
+                self.channel.emit("account_linked", email=result["email"])
+
+            launch_link(self._server, self._token, callback=_on_linked)
 
     def run(self):
         """Start the tray app (blocks on main thread)."""

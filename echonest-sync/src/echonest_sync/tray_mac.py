@@ -33,12 +33,13 @@ def _resource_path(name):
 
 
 class EchoNestSync(rumps.App):
-    def __init__(self, channel, server=None, token=None):
+    def __init__(self, channel, server=None, token=None, email=None):
         super().__init__("EchoNest", icon=_resource_path("icon_grey.png"),
                          template=False, quit_button=None)
         self.channel = channel
         self._server = server
         self._token = token
+        self._linked_email = email
 
         # State
         self._sync_paused = False
@@ -57,6 +58,10 @@ class EchoNestSync(rumps.App):
         self.devices_item = rumps.MenuItem("Spotify Devices")
         self.devices_item.add(rumps.MenuItem("Click to refresh", callback=self.refresh_devices))
         self.search_item = rumps.MenuItem("Search & Add Song", callback=self.open_search)
+        if self._linked_email:
+            self.link_item = rumps.MenuItem(f"Linked: {self._linked_email}", callback=None)
+        else:
+            self.link_item = rumps.MenuItem("Link Account", callback=self.open_link)
         self.pause_item = rumps.MenuItem("Pause Sync", callback=self.toggle_pause)
         self.open_item = rumps.MenuItem("Open EchoNest", callback=self.open_echonest)
         self.update_item = rumps.MenuItem("Check for Updates", callback=self.check_updates)
@@ -73,6 +78,7 @@ class EchoNestSync(rumps.App):
             self.airhorn_item,
             self.devices_item,
             self.search_item,
+            self.link_item,
             self.pause_item,
             None,
             self.update_item,
@@ -174,6 +180,13 @@ class EchoNestSync(rumps.App):
             error = kw.get("error", "Unknown error")
             rumps.notification("EchoNest Sync", "", f"Transfer failed: {error}",
                                sound=False)
+
+        elif etype == "account_linked":
+            email = kw.get("email", "")
+            if email:
+                self._linked_email = email
+                self.link_item.title = f"Linked: {email}"
+                self.link_item.set_callback(None)
 
     def _refresh_status(self):
         """Update the status line to reflect connection + playback state."""
@@ -280,6 +293,18 @@ class EchoNestSync(rumps.App):
         if self._server and self._token:
             from .search import launch_search
             launch_search(self._server, self._token)
+
+    def open_link(self, _):
+        if self._server and self._token:
+            # Open the linking page in the browser
+            webbrowser.open(f"{self._server}/sync/link")
+            # Show the code entry dialog
+            from .link import launch_link
+
+            def _on_linked(result):
+                self.channel.emit("account_linked", email=result["email"])
+
+            launch_link(self._server, self._token, callback=_on_linked)
 
     def toggle_autostart(self, _):
         if is_autostart_enabled():
