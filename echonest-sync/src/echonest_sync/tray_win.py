@@ -64,7 +64,6 @@ class EchoNestSyncTray:
         self._update_text = "Check for Updates"
         self._queue_tracks = []
         self._airhorn_enabled = True
-        self._devices = []  # list of {id, name, is_active}
 
         self.icon = pystray.Icon("echonest-sync", _load_icon("grey"))
         self._build_menu()
@@ -84,8 +83,6 @@ class EchoNestSyncTray:
             pystray.MenuItem(
                 lambda _: f"Airhorns: {'On' if self._airhorn_enabled else 'Off'}",
                 self._toggle_airhorn),
-            pystray.MenuItem("Spotify Devices", pystray.Menu(
-                lambda: self._devices_menu_items())),
             pystray.MenuItem(
                 lambda _: "Search & Add Song" if self._linked_email else "Search & Add Song (link account first)",
                 self._open_search,
@@ -166,27 +163,6 @@ class EchoNestSyncTray:
     def _toggle_airhorn(self):
         self._airhorn_enabled = not self._airhorn_enabled
         self.channel.send_command("toggle_airhorn")
-
-    def _devices_menu_items(self):
-        """Generate submenu items for Spotify devices."""
-        if not self._devices:
-            return [pystray.MenuItem("No devices found", None, enabled=False)]
-        items = []
-        for dev in self._devices:
-            name = dev.get("name", "Unknown")
-            is_active = dev.get("is_active", False)
-            device_id = dev.get("id", "")
-            items.append(pystray.MenuItem(
-                f"{'✓ ' if is_active else ''}{name}",
-                lambda did=device_id: self._transfer_to(did),
-            ))
-        # Add a refresh item at the bottom
-        items.append(pystray.Menu.SEPARATOR)
-        items.append(pystray.MenuItem("Refresh", lambda: self.channel.send_command("fetch_devices")))
-        return items
-
-    def _transfer_to(self, device_id):
-        self.channel.send_command("transfer_playback", device_id=device_id)
 
     def _open_search(self):
         if self._server and self._token:
@@ -280,16 +256,6 @@ class EchoNestSyncTray:
 
         elif etype == "airhorn":
             pass  # Sound played by sync engine
-
-        elif etype == "devices_updated":
-            self._devices = kw.get("devices", [])
-
-        elif etype == "transfer_complete":
-            self.channel.send_command("fetch_devices")
-
-        elif etype == "transfer_failed":
-            error = kw.get("error", "Unknown error")
-            self._notify("EchoNest Sync", f"Transfer failed: {error}")
 
         elif etype == "account_linked":
             email = kw.get("email", "")

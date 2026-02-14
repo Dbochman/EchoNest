@@ -47,7 +47,6 @@ class EchoNestSync(rumps.App):
         self._last_disconnect = 0
         self._current_track = "No track"
         self._airhorn_enabled = True
-        self._devices = []  # list of {id, name, is_active}
 
         # Menu items
         self.status_item = rumps.MenuItem("Disconnected", callback=None)
@@ -55,8 +54,6 @@ class EchoNestSync(rumps.App):
         self.queue_item = rumps.MenuItem("Up Next")
         self.queue_item.add(rumps.MenuItem("No upcoming tracks", callback=None))
         self.airhorn_item = rumps.MenuItem("Airhorns: On", callback=self.toggle_airhorn)
-        self.devices_item = rumps.MenuItem("Spotify Devices")
-        self.devices_item.add(rumps.MenuItem("Click to refresh", callback=self.refresh_devices))
         if self._linked_email:
             self.search_item = rumps.MenuItem("Search & Add Song", callback=self.open_search)
             self.link_item = rumps.MenuItem(f"Linked: {self._linked_email}", callback=None)
@@ -77,7 +74,6 @@ class EchoNestSync(rumps.App):
             None,  # separator
             self.open_item,
             self.airhorn_item,
-            self.devices_item,
             self.search_item,
             self.link_item,
             self.pause_item,
@@ -170,18 +166,6 @@ class EchoNestSync(rumps.App):
         elif etype == "airhorn":
             pass  # Sound played by sync engine
 
-        elif etype == "devices_updated":
-            self._devices = kw.get("devices", [])
-            self._update_devices_menu()
-
-        elif etype == "transfer_complete":
-            self.channel.send_command("fetch_devices")
-
-        elif etype == "transfer_failed":
-            error = kw.get("error", "Unknown error")
-            rumps.notification("EchoNest Sync", "", f"Transfer failed: {error}",
-                               sound=False)
-
         elif etype == "account_linked":
             email = kw.get("email", "")
             if email:
@@ -268,29 +252,6 @@ class EchoNestSync(rumps.App):
         self._airhorn_enabled = not self._airhorn_enabled
         self.airhorn_item.title = f"Airhorns: {'On' if self._airhorn_enabled else 'Off'}"
         self.channel.send_command("toggle_airhorn")
-
-    def refresh_devices(self, _):
-        self.channel.send_command("fetch_devices")
-
-    def _update_devices_menu(self):
-        self.devices_item.clear()
-        if not self._devices:
-            self.devices_item.add(rumps.MenuItem("No devices found", callback=None))
-        else:
-            for dev in self._devices:
-                name = dev.get("name", "Unknown")
-                is_active = dev.get("is_active", False)
-                device_id = dev.get("id", "")
-                item = rumps.MenuItem(
-                    f"{'✓ ' if is_active else ''}{name}",
-                    callback=lambda _, did=device_id: self._transfer_to(did),
-                )
-                self.devices_item.add(item)
-        self.devices_item.add(None)  # separator
-        self.devices_item.add(rumps.MenuItem("Refresh", callback=self.refresh_devices))
-
-    def _transfer_to(self, device_id):
-        self.channel.send_command("transfer_playback", device_id=device_id)
 
     def open_search(self, _):
         if self._server and self._token:
