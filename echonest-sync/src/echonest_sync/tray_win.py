@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import time
+import webbrowser
 
 import pystray
 from PIL import Image
@@ -67,8 +68,9 @@ class EchoNestSyncTray:
                 None, enabled=False),
             pystray.MenuItem(
                 lambda _: f"♪ {self._current_track}",
-                None, enabled=False),
+                self._focus_spotify),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Open EchoNest", self._open_echonest),
             pystray.MenuItem(
                 lambda _: "Resume Sync" if self._sync_paused else "Pause Sync",
                 self._toggle_pause),
@@ -79,6 +81,20 @@ class EchoNestSyncTray:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
+
+    def _focus_spotify(self):
+        import platform
+        import subprocess
+        system = platform.system()
+        if system == "Darwin":
+            subprocess.Popen(["open", "-a", "Spotify"])
+        elif system == "Windows":
+            subprocess.Popen(["cmd", "/c", "start", "spotify:"], shell=True)
+        else:
+            subprocess.Popen(["xdg-open", "spotify:"])
+
+    def _open_echonest(self):
+        webbrowser.open("https://echone.st")
 
     def _toggle_pause(self):
         if self._sync_paused:

@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+import webbrowser
 
 import rumps
 
@@ -44,9 +45,10 @@ class EchoNestSync(rumps.App):
 
         # Menu items
         self.status_item = rumps.MenuItem("Status: Starting...", callback=None)
-        self.track_item = rumps.MenuItem("No track", callback=None)
+        self.track_item = rumps.MenuItem("No track", callback=self.focus_spotify)
         self.pause_item = rumps.MenuItem("Pause Sync", callback=self.toggle_pause)
         self.snooze_item = rumps.MenuItem("Snooze 15 min", callback=self.snooze)
+        self.open_item = rumps.MenuItem("Open EchoNest", callback=self.open_echonest)
         self.autostart_item = rumps.MenuItem("Start at Login",
                                              callback=self.toggle_autostart)
         self.quit_item = rumps.MenuItem("Quit EchoNest Sync", callback=self.quit_app)
@@ -55,6 +57,7 @@ class EchoNestSync(rumps.App):
             self.status_item,
             self.track_item,
             None,  # separator
+            self.open_item,
             self.pause_item,
             self.snooze_item,
             None,
@@ -149,6 +152,13 @@ class EchoNestSync(rumps.App):
             self.icon = _resource_path(f"icon_{color}.png")
         except Exception:
             pass
+
+    def focus_spotify(self, _):
+        import subprocess
+        subprocess.Popen(["open", "-a", "Spotify"])
+
+    def open_echonest(self, _):
+        webbrowser.open("https://echone.st")
 
     def toggle_pause(self, _):
         if self._sync_paused:
