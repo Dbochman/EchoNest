@@ -16,6 +16,7 @@ DEFAULT_CONFIG_PATH = Path.home() / ".echonest-sync.yaml"
 DEFAULTS = {
     "server": None,
     "token": None,
+    "email": None,
     "drift_threshold": 3,
     "autostart": False,
     "notifications": True,
