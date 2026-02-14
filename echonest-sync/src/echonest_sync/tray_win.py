@@ -86,7 +86,10 @@ class EchoNestSyncTray:
                 self._toggle_airhorn),
             pystray.MenuItem("Spotify Devices", pystray.Menu(
                 lambda: self._devices_menu_items())),
-            pystray.MenuItem("Search & Add Song", self._open_search),
+            pystray.MenuItem(
+                lambda _: "Search & Add Song" if self._linked_email else "Search & Add Song (link account first)",
+                self._open_search,
+                enabled=lambda _: bool(self._linked_email)),
             pystray.MenuItem(
                 lambda _: f"Linked: {self._linked_email}" if self._linked_email else "Link Account",
                 self._open_link,

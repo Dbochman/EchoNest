@@ -91,27 +91,16 @@ class LinkDialog:
 
 
 def launch_link(server: str, token: str, callback=None) -> None:
-    """Launch the link dialog, handling frozen vs pip-installed detection."""
-    _is_frozen = getattr(sys, "frozen", False)
+    """Launch the link dialog on a background thread."""
+    import threading
 
-    if _is_frozen:
-        # Frozen build: run inline on a background thread
-        import threading
+    def _run():
+        dialog = LinkDialog(server, token)
+        dialog.show()
+        if dialog.result and callback:
+            callback(dialog.result)
 
-        def _run():
-            dialog = LinkDialog(server, token)
-            dialog.show()
-            if dialog.result and callback:
-                callback(dialog.result)
-
-        threading.Thread(target=_run, daemon=True).start()
-    else:
-        # Pip install: spawn as subprocess (callback won't fire, tray polls config)
-        import subprocess
-        subprocess.Popen(
-            [sys.executable, "-m", "echonest_sync.link",
-             "--server", server, "--token", token],
-        )
+    threading.Thread(target=_run, daemon=True).start()
 
 
 if __name__ == "__main__":
