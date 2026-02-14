@@ -27,7 +27,6 @@ def build():
 
         # macOS-specific
         "--osx-bundle-identifier", "st.echone.sync",
-        "--target-architecture", "universal2",
 
         # App icon
         "--icon", os.path.join(ROOT, "resources", "icon.icns"),
