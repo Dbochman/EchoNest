@@ -151,7 +151,29 @@ class WindowsPlayer(SpotifyPlayer):
 
     def play_track(self, uri):
         import os
+        try:
+            import ctypes
+            # Remember the currently focused window before Spotify steals focus
+            user32 = ctypes.windll.user32
+            prev_hwnd = user32.GetForegroundWindow()
+        except Exception:
+            prev_hwnd = None
+
         os.startfile(uri)
+
+        if prev_hwnd:
+            # Give Spotify a moment to grab focus, then restore the previous window
+            import threading
+
+            def _restore():
+                import time
+                time.sleep(0.5)
+                try:
+                    user32.SetForegroundWindow(prev_hwnd)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_restore, daemon=True).start()
 
     def pause(self):
         log.warning("pause not supported on Windows")
