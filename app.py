@@ -7,7 +7,9 @@ import json
 import datetime
 import hashlib
 import functools
+import hmac
 import secrets
+import string
 import urllib.parse
 import urllib.request
 import socket as psocket
@@ -762,7 +764,8 @@ def inject_config():
 
 SAFE_PATHS = ('/login/', '/login/google', '/logout/', '/playing/', '/queue/', '/volume/',
               '/signup/', '/signup', '/api/jammit/', '/health', '/stats',
-              '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/')
+              '/authentication/callback', '/token', '/last/', '/airhorns/', '/z/',
+              '/sync/link')
 SAFE_PARAM_PATHS = ('/history', '/user_history', '/user_jam_history', '/search/v2', '/youtube/lookup', '/youtube/playlist', '/add_song',
     '/blast_airhorn', '/airhorn_list', '/queue/', '/jam', '/api/')
 VALID_HOSTS = ('localhost:5000', 'localhost:5001', '127.0.0.1:5000', '127.0.0.1:5001',
@@ -1535,10 +1538,35 @@ def _markdown_to_html(text):
 
 API_EMAIL = 'openclaw@api'
 
+# Cache for linked users set (refreshed every 60s to avoid Redis round-trip on every request)
+_linked_users_cache = {'users': set(), 'ts': 0}
+
+
+def _compute_user_token(email):
+    """Compute deterministic per-user sync token: HMAC-SHA256(SECRET_KEY, "sync:" + email)."""
+    return hmac.new(
+        CONF.SECRET_KEY.encode() if isinstance(CONF.SECRET_KEY, str) else CONF.SECRET_KEY,
+        ('sync:' + email).encode(),
+        'sha256',
+    ).hexdigest()
+
+
+def _get_linked_users():
+    """Return set of linked user emails, cached for 60s."""
+    now = time.time()
+    if now - _linked_users_cache['ts'] > 60:
+        try:
+            _linked_users_cache['users'] = d._r.smembers('SYNC_LINKED_USERS') or set()
+        except Exception:
+            pass
+        _linked_users_cache['ts'] = now
+    return _linked_users_cache['users']
+
 
 def require_api_token(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
+        from flask import g
         configured_token = CONF.ECHONEST_API_TOKEN
         if not configured_token:
             return jsonify(error='API token not configured on server'), 503
@@ -1551,10 +1579,21 @@ def require_api_token(f):
             return resp
 
         provided_token = auth_header[7:]  # strip "Bearer "
-        if not secrets.compare_digest(provided_token, configured_token):
-            return jsonify(error='Invalid API token'), 403
 
-        return f(*args, **kwargs)
+        # Check shared API token first (fast path)
+        if secrets.compare_digest(provided_token, configured_token):
+            g.auth_email = API_EMAIL
+            return f(*args, **kwargs)
+
+        # Check per-user sync tokens
+        for email in _get_linked_users():
+            expected = _compute_user_token(email)
+            if secrets.compare_digest(provided_token, expected):
+                g.auth_email = email
+                return f(*args, **kwargs)
+
+        return jsonify(error='Invalid API token'), 403
+
     return decorated
 
 
@@ -1637,6 +1676,21 @@ def api_queue_resume():
 def api_queue_clear():
     d.nuke_queue(API_EMAIL)
     return jsonify(ok=True)
+
+
+@app.route('/api/add_song', methods=['POST'])
+@require_api_token
+def api_add_song():
+    from flask import g
+    body = request.get_json(silent=True) or {}
+    track_uri = body.get('track_uri')
+    if not track_uri:
+        return jsonify(error='Missing required field: track_uri'), 400
+    email = getattr(g, 'auth_email', API_EMAIL)
+    new_id = d.add_spotify_song(email, track_uri, penalty=0)
+    if new_id:
+        return jsonify(ok=True, id=new_id)
+    return jsonify(error='Failed to add song'), 500
 
 
 # ---------------------------------------------------------------------------
@@ -1808,6 +1862,69 @@ def api_stats():
     )
 
 
+@app.route('/sync/link')
+def sync_link_page():
+    """Show a linking code for echonest-sync account linking.
+
+    Requires Google session auth. If not logged in, redirect to login.
+    """
+    email = _get_authenticated_email()
+    if not email:
+        return redirect('/login/google')
+
+    # Generate 6-char uppercase alphanumeric code
+    code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+
+    # Store in Redis with 5 min TTL
+    link_data = json.dumps({'email': email, 'name': session.get('fullname', '')})
+    d._r.setex(f'SYNC_LINK|{code}', 300, link_data)
+
+    return render_template('sync_link.html', code=code, email=email)
+
+
+@app.route('/api/sync-link', methods=['POST'])
+@require_api_token
+def api_sync_link():
+    """Exchange a linking code for a per-user sync token."""
+    # Rate limit: 10 attempts per IP per hour
+    ip = request.remote_addr or 'unknown'
+    rate_key = f'SYNC_TOKEN_RATE|{ip}'
+    attempts = d._r.incr(rate_key)
+    if attempts == 1:
+        d._r.expire(rate_key, 3600)
+    if attempts > 10:
+        return jsonify(error='rate_limited'), 429
+
+    body = request.get_json(silent=True) or {}
+    code = (body.get('code') or '').strip().upper()
+    if not code:
+        return jsonify(error='missing_code'), 400
+
+    # Look up the linking code
+    redis_key = f'SYNC_LINK|{code}'
+    link_data = d._r.get(redis_key)
+    if not link_data:
+        return jsonify(error='invalid_or_expired_code'), 404
+
+    # Single-use: delete immediately
+    d._r.delete(redis_key)
+
+    data = json.loads(link_data)
+    email = data['email']
+    name = data.get('name', '')
+
+    # Generate deterministic per-user token
+    user_token = _compute_user_token(email)
+
+    # Track this linked user
+    d._r.sadd('SYNC_LINKED_USERS', email)
+
+    # Invalidate cache so the token works immediately
+    _linked_users_cache['ts'] = 0
+
+    return jsonify(email=email, name=name, user_token=user_token)
+
+
 @app.route('/api/sync-token', methods=['POST'])
 def api_sync_token():
     """Exchange an invite code for an API token (echonest-sync desktop app).
@@ -1886,6 +2003,10 @@ def api_events():
                     _, vol = data.split('|', 1)
                     payload = json.dumps({'volume': int(vol)})
                     yield 'event: volume\ndata: %s\n\n' % payload
+                elif data.startswith('do_airhorn|'):
+                    _, vol, name = data.split('|', 2)
+                    payload = json.dumps({'volume': float(vol), 'name': name})
+                    yield 'event: airhorn\ndata: %s\n\n' % payload
         except GeneratorExit:
             pass
         finally:

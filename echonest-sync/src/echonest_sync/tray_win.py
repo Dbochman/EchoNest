@@ -49,8 +49,11 @@ def _load_icon(color):
 
 
 class EchoNestSyncTray:
-    def __init__(self, channel):
+    def __init__(self, channel, server=None, token=None, email=None):
         self.channel = channel
+        self._server = server
+        self._token = token
+        self._linked_email = email
 
         # State
         self._sync_paused = False
@@ -60,6 +63,7 @@ class EchoNestSyncTray:
         self._running = True
         self._update_text = "Check for Updates"
         self._queue_tracks = []
+        self._airhorn_enabled = True
 
         self.icon = pystray.Icon("echonest-sync", _load_icon("grey"))
         self._build_menu()
@@ -74,12 +78,23 @@ class EchoNestSyncTray:
                 self._focus_spotify),
             pystray.MenuItem("Up Next", pystray.Menu(
                 lambda: self._queue_menu_items())),
-            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open EchoNest", self._open_echonest),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 lambda _: "Resume Sync" if self._sync_paused else "Pause Sync",
                 self._toggle_pause),
+            pystray.MenuItem(
+                lambda _: f"Airhorns: {'On' if self._airhorn_enabled else 'Off'}",
+                self._toggle_airhorn),
+            pystray.MenuItem(
+                lambda _: "Search & Add Song" if self._linked_email else "Search & Add Song (link account first)",
+                self._open_search,
+                enabled=lambda _: bool(self._linked_email)),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                lambda _: f"Linked: {self._linked_email}" if self._linked_email else "Link Account",
+                self._open_link,
+                enabled=lambda _: not self._linked_email),
             pystray.MenuItem(
                 lambda _: self._update_text,
                 self._check_updates),
@@ -144,6 +159,15 @@ class EchoNestSyncTray:
             items.append(pystray.MenuItem(
                 f"  + {len(self._queue_tracks) - 15} more...", None, enabled=False))
         return items
+
+    def _toggle_airhorn(self):
+        self._airhorn_enabled = not self._airhorn_enabled
+        self.channel.send_command("toggle_airhorn")
+
+    def _open_search(self):
+        if self._server and self._token:
+            from .search import launch_search
+            launch_search(self._server, self._token)
 
     def _refresh_status(self):
         """Update the status line to reflect connection + playback state."""
@@ -226,6 +250,28 @@ class EchoNestSyncTray:
 
         elif etype == "queue_updated":
             self._queue_tracks = kw.get("tracks", [])
+
+        elif etype == "airhorn_toggled":
+            self._airhorn_enabled = kw.get("enabled", True)
+
+        elif etype == "airhorn":
+            pass  # Sound played by sync engine
+
+        elif etype == "account_linked":
+            email = kw.get("email", "")
+            if email:
+                self._linked_email = email
+
+    def _open_link(self):
+        if self._server and self._token and not self._linked_email:
+            import webbrowser as wb
+            wb.open(f"{self._server}/sync/link")
+            from .link import launch_link
+
+            def _on_linked(result):
+                self.channel.emit("account_linked", email=result["email"])
+
+            launch_link(self._server, self._token, callback=_on_linked)
 
     def run(self):
         """Start the tray app (blocks on main thread)."""

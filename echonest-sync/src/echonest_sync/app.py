@@ -57,6 +57,11 @@ def main():
             sys.exit(1)
         token = get_token() or token
 
+    # Check for linked account email
+    linked_email = config.get("email")
+    if linked_email:
+        log.info("Account linked as %s", linked_email)
+
     # Create IPC channel
     channel = SyncChannel()
 
@@ -92,12 +97,12 @@ def main():
         except Exception:
             pass
         from .tray_mac import EchoNestSync
-        app = EchoNestSync(channel)
+        app = EchoNestSync(channel, server=server, token=token, email=linked_email)
         app.run()
     else:
         # Windows and Linux both use pystray
         from .tray_win import EchoNestSyncTray
-        app = EchoNestSyncTray(channel)
+        app = EchoNestSyncTray(channel, server=server, token=token, email=linked_email)
         app.run()
 
 

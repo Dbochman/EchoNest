@@ -33,22 +33,33 @@ def _resource_path(name):
 
 
 class EchoNestSync(rumps.App):
-    def __init__(self, channel):
+    def __init__(self, channel, server=None, token=None, email=None):
         super().__init__("EchoNest", icon=_resource_path("icon_grey.png"),
                          template=False, quit_button=None)
         self.channel = channel
+        self._server = server
+        self._token = token
+        self._linked_email = email
 
         # State
         self._sync_paused = False
         self._connected = False
         self._last_disconnect = 0
         self._current_track = "No track"
+        self._airhorn_enabled = True
 
         # Menu items
         self.status_item = rumps.MenuItem("Disconnected", callback=None)
         self.track_item = rumps.MenuItem("No track", callback=self.focus_spotify)
         self.queue_item = rumps.MenuItem("Up Next")
         self.queue_item.add(rumps.MenuItem("No upcoming tracks", callback=None))
+        self.airhorn_item = rumps.MenuItem("Airhorns: On", callback=self.toggle_airhorn)
+        if self._linked_email:
+            self.search_item = rumps.MenuItem("Search & Add Song", callback=self.open_search)
+            self.link_item = rumps.MenuItem(f"Linked: {self._linked_email}", callback=None)
+        else:
+            self.search_item = rumps.MenuItem("Search & Add Song (link account first)", callback=None)
+            self.link_item = rumps.MenuItem("Link Account", callback=self.open_link)
         self.pause_item = rumps.MenuItem("Pause Sync", callback=self.toggle_pause)
         self.open_item = rumps.MenuItem("Open EchoNest", callback=self.open_echonest)
         self.update_item = rumps.MenuItem("Check for Updates", callback=self.check_updates)
@@ -60,10 +71,13 @@ class EchoNestSync(rumps.App):
             self.status_item,
             self.track_item,
             self.queue_item,
-            None,  # separator
             self.open_item,
+            None,  # separator
             self.pause_item,
+            self.airhorn_item,
+            self.search_item,
             None,
+            self.link_item,
             self.update_item,
             self.autostart_item,
             None,
@@ -145,6 +159,22 @@ class EchoNestSync(rumps.App):
         elif etype == "user_override":
             pass  # Handled via status_changed
 
+        elif etype == "airhorn_toggled":
+            self._airhorn_enabled = kw.get("enabled", True)
+            self.airhorn_item.title = f"Airhorns: {'On' if self._airhorn_enabled else 'Off'}"
+
+        elif etype == "airhorn":
+            pass  # Sound played by sync engine
+
+        elif etype == "account_linked":
+            email = kw.get("email", "")
+            if email:
+                self._linked_email = email
+                self.link_item.title = f"Linked: {email}"
+                self.link_item.set_callback(None)
+                self.search_item.title = "Search & Add Song"
+                self.search_item.set_callback(self.open_search)
+
     def _refresh_status(self):
         """Update the status line to reflect connection + playback state."""
         if not self._connected:
@@ -217,6 +247,92 @@ class EchoNestSync(rumps.App):
             self.update_item.title = f"Up to date (v{CURRENT_VERSION})"
             self._alert("No Updates",
                         f"You're on the latest version (v{CURRENT_VERSION}).")
+
+    def toggle_airhorn(self, _):
+        self._airhorn_enabled = not self._airhorn_enabled
+        self.airhorn_item.title = f"Airhorns: {'On' if self._airhorn_enabled else 'Off'}"
+        self.channel.send_command("toggle_airhorn")
+
+    def open_search(self, _):
+        if self._server and self._token:
+            from .search import launch_search
+            launch_search(self._server, self._token)
+
+    def open_link(self, _):
+        if not (self._server and self._token):
+            return
+        # Open the linking page in the browser
+        webbrowser.open(f"{self._server}/sync/link")
+        # Show native NSAlert with text input for the code
+        self._show_link_dialog()
+
+    def _show_link_dialog(self):
+        """Show a native macOS alert with a text field to enter the linking code."""
+        from AppKit import NSAlert, NSImage, NSAlertFirstButtonReturn, NSTextField
+        import requests as req
+
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("Link Account")
+        alert.setInformativeText_("Enter the 6-character code from the browser:")
+        alert.addButtonWithTitle_("Link")
+        alert.addButtonWithTitle_("Cancel")
+
+        icon_path = _resource_path("icon_app.png")
+        ns_image = NSImage.alloc().initWithContentsOfFile_(icon_path)
+        if ns_image:
+            ns_image.setSize_((128, 128))
+            alert.setIcon_(ns_image)
+
+        # Add text input field
+        input_field = NSTextField.alloc().initWithFrame_(((0, 0), (200, 24)))
+        input_field.setPlaceholderString_("e.g. A3K9X2")
+        alert.setAccessoryView_(input_field)
+        alert.window().setInitialFirstResponder_(input_field)
+
+        result = alert.runModal()
+        if result != NSAlertFirstButtonReturn:
+            return
+
+        code = str(input_field.stringValue()).strip()
+        if not code:
+            return
+
+        # Exchange the code for a user token
+        try:
+            resp = req.post(
+                f"{self._server}/api/sync-link",
+                headers={"Authorization": f"Bearer {self._token}",
+                         "Content-Type": "application/json"},
+                json={"code": code},
+                timeout=10,
+            )
+            if resp.status_code == 404:
+                self._alert("Link Failed", "Invalid or expired code. Try again.")
+                return
+            if resp.status_code == 429:
+                self._alert("Link Failed", "Too many attempts. Try again later.")
+                return
+            resp.raise_for_status()
+            data = resp.json()
+
+            email = data["email"]
+            user_token = data["user_token"]
+
+            # Persist the per-user token and email
+            from .config import save_config, set_token
+            set_token(user_token)
+            save_config({"email": email})
+
+            # Update tray state and live token
+            self._linked_email = email
+            self._token = user_token
+            self.link_item.title = f"Linked: {email}"
+            self.link_item.set_callback(None)
+
+            self._alert("Linked!", f"Account linked as {email}\nRestart EchoNest Sync for full effect.")
+        except Exception as e:
+            log.error("Link failed: %s", e)
+            self._alert("Link Failed", f"Error: {e}")
 
     def toggle_autostart(self, _):
         if is_autostart_enabled():

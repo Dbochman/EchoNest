@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>EchoNest - Link Account</title>
+        <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css" type="text/css">
+        <link rel="shortcut icon" href="/static/favicon.png">
+        <style>
+            body { background: #1a1a2e; color: #eee; }
+            .link-container {
+                max-width: 440px;
+                margin: 80px auto;
+                text-align: center;
+            }
+            .link-container h1 { margin-bottom: 10px; }
+            .link-container p.subtitle { color: #aaa; margin-bottom: 30px; }
+            .code-display {
+                font-size: 48px;
+                font-family: 'Courier New', monospace;
+                letter-spacing: 12px;
+                background: #16213e;
+                border: 2px solid #0f3460;
+                border-radius: 8px;
+                padding: 20px 30px;
+                margin: 30px auto;
+                display: inline-block;
+                user-select: all;
+            }
+            .instructions {
+                color: #aaa;
+                font-size: 14px;
+                margin-top: 20px;
+            }
+            .expiry {
+                color: #666;
+                font-size: 13px;
+                margin-top: 15px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="link-container">
+            <h1>Link EchoNest Sync</h1>
+            <p class="subtitle">Signed in as <strong>{{ email }}</strong></p>
+
+            <div class="code-display">{{ code }}</div>
+
+            <p class="instructions">
+                Enter this code in EchoNest Sync<br>
+                (Tray menu &rarr; Link Account)
+            </p>
+            <p class="expiry">Code expires in 5 minutes</p>
+        </div>
+    </body>
+</html>
