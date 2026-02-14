@@ -385,8 +385,8 @@ class TestCLI:
         cfg.write_text("server: https://test.com\ntoken: testtoken\n")
         runner = CliRunner()
         # Patch create_player and SyncAgent.run to avoid actual execution
-        with patch("echonest_sync.cli.create_player") as mock_cp, \
-             patch("echonest_sync.cli.SyncAgent") as mock_sa:
+        with patch("echonest_sync.player.create_player") as mock_cp, \
+             patch("echonest_sync.sync.SyncAgent") as mock_sa:
             mock_player = MockPlayer()
             mock_cp.return_value = mock_player
             mock_sa.return_value.run.return_value = None
