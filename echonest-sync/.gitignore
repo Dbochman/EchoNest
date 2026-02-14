@@ -1,0 +1,7 @@
+dist/
+build/EchoNest Sync/
+*.spec
+__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store
