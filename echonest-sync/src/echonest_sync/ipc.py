@@ -39,7 +39,7 @@ class SyncChannel:
     def send_command(self, cmd: str, **kwargs: Any) -> None:
         """Send a command from GUI to engine.
 
-        Commands: 'pause', 'resume', 'snooze', 'quit'
+        Commands: 'pause', 'resume', 'quit'
         """
         self._commands.put(Command(type=cmd, kwargs=kwargs))
 

@@ -78,6 +78,19 @@ def main():
     # Start tray app on main thread
     system = platform.system()
     if system == "Darwin":
+        # Hide dock icon (agent/accessory app) and set app icon for dialogs
+        try:
+            from AppKit import NSApplication, NSImage
+            from AppKit import NSApplicationActivationPolicyAccessory
+            ns_app = NSApplication.sharedApplication()
+            ns_app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+            from .tray_mac import _resource_path
+            icon_path = _resource_path("icon_app.png")
+            ns_image = NSImage.alloc().initWithContentsOfFile_(icon_path)
+            if ns_image:
+                ns_app.setApplicationIconImage_(ns_image)
+        except Exception:
+            pass
         from .tray_mac import EchoNestSync
         app = EchoNestSync(channel)
         app.run()

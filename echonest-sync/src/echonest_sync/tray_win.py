@@ -10,6 +10,7 @@ import pystray
 from PIL import Image
 
 from .autostart import disable_autostart, enable_autostart, is_autostart_enabled
+from .updater import check_for_update_async, check_for_update, CURRENT_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +56,10 @@ class EchoNestSyncTray:
         self._sync_paused = False
         self._connected = False
         self._current_track = "No track"
-        self._status_text = "Starting..."
+        self._status_text = "Disconnected"
         self._running = True
+        self._update_text = "Check for Updates"
+        self._queue_tracks = []
 
         self.icon = pystray.Icon("echonest-sync", _load_icon("grey"))
         self._build_menu()
@@ -69,13 +72,17 @@ class EchoNestSyncTray:
             pystray.MenuItem(
                 lambda _: f"♪ {self._current_track}",
                 self._focus_spotify),
+            pystray.MenuItem("Up Next", pystray.Menu(
+                lambda: self._queue_menu_items())),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open EchoNest", self._open_echonest),
             pystray.MenuItem(
                 lambda _: "Resume Sync" if self._sync_paused else "Pause Sync",
                 self._toggle_pause),
-            pystray.MenuItem("Snooze 15 min", self._snooze),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                lambda _: self._update_text,
+                self._check_updates),
             pystray.MenuItem("Start at Login", self._toggle_autostart,
                              checked=lambda _: is_autostart_enabled()),
             pystray.Menu.SEPARATOR,
@@ -102,8 +109,18 @@ class EchoNestSyncTray:
         else:
             self.channel.send_command("pause")
 
-    def _snooze(self):
-        self.channel.send_command("snooze", duration=900)
+    def _check_updates(self):
+        self._update_text = "Checking for updates..."
+        result = check_for_update()
+        if result["available"]:
+            v = result["version"]
+            self._update_text = f"Update available: v{v}"
+            self._notify("Update Available", f"Version {v} is ready to download")
+            webbrowser.open(result["download_url"])
+        else:
+            self._update_text = f"Up to date (v{CURRENT_VERSION})"
+            self._notify("No Updates",
+                         f"You're on the latest version (v{CURRENT_VERSION})")
 
     def _toggle_autostart(self):
         if is_autostart_enabled():
@@ -115,6 +132,30 @@ class EchoNestSyncTray:
         self.channel.send_command("quit")
         self._running = False
         self.icon.stop()
+
+    def _queue_menu_items(self):
+        """Generate submenu items for the Up Next queue."""
+        if not self._queue_tracks:
+            return [pystray.MenuItem("No upcoming tracks", None, enabled=False)]
+        items = []
+        for i, track in enumerate(self._queue_tracks[:15]):
+            items.append(pystray.MenuItem(f"{i + 1}. {track}", None, enabled=False))
+        if len(self._queue_tracks) > 15:
+            items.append(pystray.MenuItem(
+                f"  + {len(self._queue_tracks) - 15} more...", None, enabled=False))
+        return items
+
+    def _refresh_status(self):
+        """Update the status line to reflect connection + playback state."""
+        if not self._connected:
+            self._status_text = "Disconnected"
+            return
+        if self._sync_paused:
+            self._status_text = "Connected - Paused"
+        elif self._current_track and self._current_track != "No track":
+            self._status_text = "Connected - Now Playing"
+        else:
+            self._status_text = "Connected"
 
     def _update_icon(self, color):
         try:
@@ -144,7 +185,7 @@ class EchoNestSyncTray:
             was_connected = self._connected
             self._connected = True
             self._update_icon("green")
-            self._status_text = "In Sync"
+            self._refresh_status()
             if was_connected:
                 self._notify("EchoNest Sync", "Reconnected")
             else:
@@ -152,8 +193,8 @@ class EchoNestSyncTray:
 
         elif etype == "disconnected":
             self._connected = False
-            self._status_text = "Reconnecting..."
             self._update_icon("yellow")
+            self._refresh_status()
 
         elif etype == "track_changed":
             title = kw.get("title", "")
@@ -164,32 +205,27 @@ class EchoNestSyncTray:
                 self._current_track = title
             else:
                 self._current_track = kw.get("uri", "Unknown")
+            self._refresh_status()
 
         elif etype == "status_changed":
             status = kw.get("status", "")
             if status == "paused":
                 self._sync_paused = True
-                self._status_text = "Paused"
-                self._update_icon("grey")
-            elif status == "snoozed":
-                self._sync_paused = True
-                until = kw.get("until", 0)
-                mins = max(1, int((until - time.time()) / 60))
-                self._status_text = f"Snoozed ({mins}m)"
-                self._update_icon("grey")
+                self._update_icon("yellow")
             elif status == "syncing":
                 self._sync_paused = False
-                self._status_text = "In Sync"
                 self._update_icon("green")
             elif status == "override":
                 self._sync_paused = True
-                self._status_text = "Manual playback"
-                self._update_icon("grey")
+                self._update_icon("yellow")
                 self._notify("EchoNest Sync",
                              "You took over — click to rejoin")
             elif status == "waiting":
-                self._status_text = "Waiting for Spotify..."
                 self._update_icon("grey")
+            self._refresh_status()
+
+        elif etype == "queue_updated":
+            self._queue_tracks = kw.get("tracks", [])
 
     def run(self):
         """Start the tray app (blocks on main thread)."""

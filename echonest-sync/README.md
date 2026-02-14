@@ -29,17 +29,16 @@ On first launch, an onboarding dialog auto-connects to EchoNest — no invite co
 - **Track info** — click to foreground Spotify
 - **Open EchoNest** — opens echone.st in your browser
 - **Pause / Resume Sync** — temporarily stop syncing
-- **Snooze 15 min** — auto-resume after 15 minutes
 - **Start at Login** — enable/disable autostart
 - **Quit**
 
 ### Tray Icon Colors
 
-| Color | Meaning |
-|-------|---------|
-| Green | Connected and syncing |
-| Yellow | Reconnecting |
-| Grey | Paused, snoozed, or waiting for Spotify |
+| Icon | Meaning |
+|------|---------|
+| 🪺 Green | Connected and syncing |
+| 🪹 Brown | Connected but paused |
+| 🪹 Grey | Connecting / not connected |
 
 ## CLI
 

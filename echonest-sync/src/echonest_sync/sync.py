@@ -33,7 +33,6 @@ class SyncAgent:
 
         # IPC state (only active when channel is not None)
         self._sync_paused = False
-        self._snoozed_until = 0
         self._override_count = 0
         self._last_override_check = 0
         self._override_grace_until = 0  # suppress override checks until this time
@@ -59,7 +58,6 @@ class SyncAgent:
                 log.info("Sync paused by user")
             elif cmd.type == "resume":
                 self._sync_paused = False
-                self._snoozed_until = 0
                 self._override_count = 0
                 # Clear current track so _initial_sync re-plays it
                 self.current_track_uri = None
@@ -69,13 +67,6 @@ class SyncAgent:
                 self._emit("status_changed", status="syncing")
                 log.info("Sync resumed by user")
                 self._initial_sync()
-            elif cmd.type == "snooze":
-                duration = cmd.kwargs.get("duration", 900)
-                self._snoozed_until = time.time() + duration
-                self._sync_paused = True
-                self._emit("status_changed", status="snoozed",
-                           until=self._snoozed_until)
-                log.info("Sync snoozed for %ds", duration)
             elif cmd.type == "quit":
                 self._running = False
                 # Close the SSE stream to unblock the event iterator
@@ -88,14 +79,6 @@ class SyncAgent:
 
     def _is_sync_active(self):
         """Check if sync should control the player right now."""
-        # Check snooze expiry
-        if self._snoozed_until and time.time() >= self._snoozed_until:
-            self._snoozed_until = 0
-            self._sync_paused = False
-            self._emit("status_changed", status="syncing")
-            log.info("Snooze expired, resuming sync")
-            self._initial_sync()
-
         return not self._sync_paused
 
     def _check_user_override(self):
@@ -253,6 +236,34 @@ class SyncAgent:
                      local_pos, server_pos, drift)
             self.player.seek_to(server_pos)
 
+    def _handle_queue_update(self, data):
+        """Process a queue_update event (list of queued tracks)."""
+        if not isinstance(data, list):
+            return
+        tracks = []
+        for item in data:
+            title = item.get("title", "")
+            artist = item.get("artist", "")
+            if title and artist:
+                tracks.append(f"{title} - {artist}")
+            elif title:
+                tracks.append(title)
+        self._emit("queue_updated", tracks=tracks)
+
+    def _fetch_queue(self):
+        """GET /api/queue to populate queue on connect."""
+        try:
+            resp = requests.get(
+                f"{self.server}/api/queue",
+                headers=self._headers(),
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            self._handle_queue_update(data.get("queue", []))
+        except Exception as e:
+            log.debug("Queue fetch failed: %s", e)
+
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
@@ -292,6 +303,7 @@ class SyncAgent:
 
                 # Sync current state before waiting for events
                 self._initial_sync()
+                self._fetch_queue()
 
                 client = sseclient.SSEClient(resp)
                 for event in client.events():
@@ -312,7 +324,8 @@ class SyncAgent:
                         self._handle_now_playing(data)
                     elif event.event == "player_position":
                         self._handle_player_position(data)
-                    # queue_update and volume events are ignored
+                    elif event.event == "queue_update":
+                        self._handle_queue_update(data)
 
             except requests.exceptions.HTTPError as e:
                 if e.response is not None and e.response.status_code == 401:

@@ -42,9 +42,9 @@ class TestSyncChannel:
 
     def test_command_kwargs(self):
         ch = SyncChannel()
-        ch.send_command("snooze", duration=900)
+        ch.send_command("pause")
         cmds = ch.get_commands()
-        assert cmds[0].kwargs == {"duration": 900}
+        assert cmds[0].kwargs == {}
 
     def test_drain_clears_queue(self):
         ch = SyncChannel()
