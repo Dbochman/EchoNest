@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "echonest-sync"
-version = "0.5.3"
+version = "0.6.0"
 description = "Desktop agent that syncs your local Spotify with an EchoNest server"
 requires-python = ">=3.9"
 dependencies = [
@@ -13,11 +13,10 @@ dependencies = [
     "click",
     "pyyaml",
     "keyring",
-    "pystray",
-    "pillow",
 ]
 
 [project.optional-dependencies]
+app = ["pystray", "pillow"]
 mac = ["rumps"]
 
 [project.scripts]

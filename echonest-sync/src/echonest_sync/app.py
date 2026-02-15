@@ -22,6 +22,16 @@ def _run_onboarding(server=None):
 
 
 def main():
+    # Guard: fail gracefully if GUI deps not installed (e.g. CLI-only Homebrew install)
+    try:
+        import pystray  # noqa: F401
+    except ImportError:
+        print("echonest-sync-app requires GUI dependencies.")
+        print("Install with:  pip install 'echonest-sync[app]'")
+        print("Or on macOS:   pip install 'echonest-sync[app,mac]'")
+        print("Or download the .dmg/.exe from GitHub Releases.")
+        sys.exit(1)
+
     setup_logging(verbose=os.environ.get("ECHONEST_VERBOSE", "").lower() in ("1", "true"))
 
     # Handle --search subprocess invocation (frozen builds re-invoke the
