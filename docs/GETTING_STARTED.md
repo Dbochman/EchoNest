@@ -85,6 +85,18 @@ Nests are separate listening rooms with their own queues. Think of them as break
 
 Each Nest has its own queue, votes, and now-playing state. You can provide a seed track url with a name to influence bender's suggestions.
 
+## Desktop App (EchoNest Sync)
+
+Want to stay synced without keeping the browser open? **EchoNest Sync** is a lightweight desktop app that keeps your local Spotify playing along with the session automatically.
+
+Download for **macOS** or **Windows** from [GitHub Releases](https://github.com/Dbochman/EchoNest/releases), or install via Homebrew on macOS:
+
+```bash
+brew tap dbochman/echonest && brew install echonest-sync
+```
+
+Features include a menu bar tray icon with sync status, a floating **mini player** with album art and progress bar, airhorn toggle, search & add, and automatic reconnection. See the [echonest-sync docs](../echonest-sync/docs/getting-started.md) for setup details.
+
 ## Profile Pictures
 
 Your profile picture comes from [Gravatar](https://gravatar.com) based on your Google sign-in email. To set one, create a free Gravatar account with the same email and upload a photo. If you don't have a Gravatar, you'll get a randomly generated monster avatar.

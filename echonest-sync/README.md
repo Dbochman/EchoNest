@@ -40,7 +40,8 @@ Linking is optional — the app works without it.
 - **Track info** — click to foreground Spotify
 - **Up Next** — submenu showing upcoming queue
 - **Open EchoNest** — opens echone.st in your browser
-- **Pause / Resume Sync** — temporarily stop syncing
+- **Pause / Resume Sync** — temporarily stop syncing (also pauses local Spotify)
+- **Mini Player** — toggle the floating always-on-top mini player (album art, progress bar, play/pause, airhorn toggle, up next)
 - **Airhorns: On/Off** — toggle airhorn sound playback
 - **Search & Add Song** — search Spotify and add to queue (requires linked account)
 - **Link Account** — link your Google account for identity
