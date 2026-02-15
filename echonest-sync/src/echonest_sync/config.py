@@ -20,6 +20,8 @@ DEFAULTS = {
     "drift_threshold": 3,
     "autostart": False,
     "notifications": True,
+    "miniplayer_x": None,
+    "miniplayer_y": None,
 }
 
 SERVICE_NAME = "echonest-sync"

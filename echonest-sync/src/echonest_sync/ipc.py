@@ -59,7 +59,7 @@ class SyncChannel:
         """Emit an event from engine to GUI.
 
         Events: 'connected', 'disconnected', 'track_changed',
-                'status_changed', 'user_override'
+                'status_changed', 'user_override', 'player_position'
         """
         self._events.put(Event(type=event_type, kwargs=kwargs))
 

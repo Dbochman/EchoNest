@@ -62,6 +62,10 @@ class SyncAgent:
                 self._sync_paused = True
                 self._emit("status_changed", status="paused")
                 log.info("Sync paused by user")
+                try:
+                    self.player.pause()
+                except Exception as e:
+                    log.debug("Failed to pause local player: %s", e)
             elif cmd.type == "resume":
                 self._sync_paused = False
                 self._override_count = 0
@@ -207,7 +211,9 @@ class SyncAgent:
             self._override_count = 0  # Reset on server track change
             # Grace period after track change to let Spotify load
             self._override_grace_until = time.time() + 15
-            self._emit("track_changed", uri=uri, title=title, artist=artist)
+            self._emit("track_changed", uri=uri, title=title, artist=artist,
+                       img=data.get("img", ""), big_img=data.get("big_img", ""),
+                       duration=data.get("duration", 0))
             # Tell tray whether server playback is paused
             self._emit("player_paused", paused=is_paused)
 
@@ -269,6 +275,8 @@ class SyncAgent:
         local_pos = self.player.get_position()
         if local_pos is None:
             return
+
+        self._emit("player_position", pos=server_pos)
 
         drift = abs(local_pos - server_pos)
         if drift > self.drift_threshold:

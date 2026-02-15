@@ -34,6 +34,12 @@ def main():
 
     setup_logging(verbose=os.environ.get("ECHONEST_VERBOSE", "").lower() in ("1", "true"))
 
+    # Handle --miniplayer subprocess invocation
+    if "--miniplayer" in sys.argv:
+        from .miniplayer import MiniPlayerWindow
+        MiniPlayerWindow().run()
+        return
+
     # Handle --search subprocess invocation (frozen builds re-invoke the
     # binary with this flag to show the search dialog in its own process,
     # avoiding the tkinter + rumps segfault on macOS).
@@ -122,12 +128,12 @@ def main():
         except Exception:
             pass
         from .tray_mac import EchoNestSync
-        app = EchoNestSync(channel, server=server, token=token, email=linked_email)
+        app = EchoNestSync(channel, server=server, token=token, email=linked_email, player=player)
         app.run()
     else:
         # Windows and Linux both use pystray
         from .tray_win import EchoNestSyncTray
-        app = EchoNestSyncTray(channel, server=server, token=token, email=linked_email)
+        app = EchoNestSyncTray(channel, server=server, token=token, email=linked_email, player=player)
         app.run()
 
 

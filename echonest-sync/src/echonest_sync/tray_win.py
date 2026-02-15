@@ -1,5 +1,6 @@
 """Cross-platform tray app using pystray (Windows + Linux)."""
 
+import json
 import logging
 import os
 import threading
@@ -49,11 +50,12 @@ def _load_icon(color):
 
 
 class EchoNestSyncTray:
-    def __init__(self, channel, server=None, token=None, email=None):
+    def __init__(self, channel, server=None, token=None, email=None, player=None):
         self.channel = channel
         self._server = server
         self._token = token
         self._linked_email = email
+        self._player = player  # local Spotify player for mini player controls
 
         # State
         self._sync_paused = False
@@ -65,6 +67,10 @@ class EchoNestSyncTray:
         self._update_text = "Check for Updates"
         self._queue_tracks = []
         self._airhorn_enabled = True
+
+        # Mini player subprocess
+        self._miniplayer_proc = None
+        self._miniplayer_state = {}  # buffered track/paused state
 
         self.icon = pystray.Icon("echonest-sync", _load_icon("grey"))
         self._build_menu()
@@ -84,6 +90,9 @@ class EchoNestSyncTray:
             pystray.MenuItem(
                 lambda _: "Resume Sync" if self._sync_paused else "Pause Sync",
                 self._toggle_pause),
+            pystray.MenuItem("Mini Player", self._toggle_miniplayer,
+                             checked=lambda _: self._miniplayer_proc is not None
+                             and self._miniplayer_proc.poll() is None),
             pystray.MenuItem(
                 lambda _: "Airhorns: Off (sync paused)" if self._sync_paused else f"Airhorns: {'On' if self._airhorn_enabled else 'Off'}",
                 self._toggle_airhorn,
@@ -144,11 +153,6 @@ class EchoNestSyncTray:
             disable_autostart()
         else:
             enable_autostart()
-
-    def _quit(self):
-        self.channel.send_command("quit")
-        self._running = False
-        self.icon.stop()
 
     def _queue_menu_items(self):
         """Generate submenu items for the Up Next queue."""
@@ -214,6 +218,8 @@ class EchoNestSyncTray:
             self._connected = True
             self._update_icon("green")
             self._refresh_status()
+            self._miniplayer_state["status"] = "connected"
+            self._mp_send({"type": "status", "status": "connected"})
             if was_connected:
                 self._notify("EchoNest Sync", "Reconnected")
             else:
@@ -223,6 +229,8 @@ class EchoNestSyncTray:
             self._connected = False
             self._update_icon("yellow")
             self._refresh_status()
+            self._miniplayer_state["status"] = "disconnected"
+            self._mp_send({"type": "status", "status": "disconnected"})
 
         elif etype == "track_changed":
             title = kw.get("title", "")
@@ -234,6 +242,14 @@ class EchoNestSyncTray:
             else:
                 self._current_track = kw.get("uri", "Unknown")
             self._refresh_status()
+            # Buffer + forward to mini player
+            self._miniplayer_state["track"] = {
+                "type": "track", "title": title, "artist": artist,
+                "big_img": kw.get("big_img", ""),
+                "duration": kw.get("duration", 0),
+                "paused": self._player_paused,
+            }
+            self._mp_send(self._miniplayer_state["track"])
 
         elif etype == "status_changed":
             status = kw.get("status", "")
@@ -251,16 +267,27 @@ class EchoNestSyncTray:
             elif status == "waiting":
                 self._update_icon("grey")
             self._refresh_status()
+            self._miniplayer_state["status"] = status
+            self._mp_send({"type": "status", "status": status})
 
         elif etype == "player_paused":
             self._player_paused = kw.get("paused", False)
             self._refresh_status()
+            self._miniplayer_state["paused"] = self._player_paused
+            self._mp_send({"type": "paused", "paused": self._player_paused})
+
+        elif etype == "player_position":
+            self._mp_send({"type": "position", "pos": kw.get("pos", 0)})
 
         elif etype == "queue_updated":
             self._queue_tracks = kw.get("tracks", [])
+            self._miniplayer_state["queue"] = self._queue_tracks
+            self._mp_send({"type": "queue", "tracks": self._queue_tracks})
 
         elif etype == "airhorn_toggled":
             self._airhorn_enabled = kw.get("enabled", True)
+            self._miniplayer_state["airhorn"] = self._airhorn_enabled
+            self._mp_send({"type": "airhorn", "enabled": self._airhorn_enabled})
 
         elif etype == "airhorn":
             pass  # Sound played by sync engine
@@ -284,6 +311,110 @@ class EchoNestSyncTray:
                                   user_token=result.get("user_token", ""))
 
             launch_link(self._server, self._token, callback=_on_linked)
+
+    # ------------------------------------------------------------------
+    # Mini player subprocess
+    # ------------------------------------------------------------------
+
+    def _toggle_miniplayer(self):
+        if self._miniplayer_proc and self._miniplayer_proc.poll() is None:
+            self._mp_send({"type": "quit"})
+            self._miniplayer_proc = None
+        else:
+            self._spawn_miniplayer()
+
+    def _spawn_miniplayer(self):
+        import subprocess
+        import sys
+
+        _is_frozen = getattr(sys, "frozen", False)
+        try:
+            if _is_frozen:
+                cmd = [sys.executable, "--miniplayer"]
+            else:
+                cmd = [sys.executable, "-m", "echonest_sync.miniplayer"]
+            self._miniplayer_proc = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            )
+            log.info("Mini player spawned (pid=%d)", self._miniplayer_proc.pid)
+
+            # Send buffered state
+            status = self._miniplayer_state.get("status", "disconnected")
+            self._mp_send({"type": "status", "status": status})
+            track = self._miniplayer_state.get("track")
+            if track:
+                self._mp_send(track)
+            if "paused" in self._miniplayer_state:
+                self._mp_send({"type": "paused", "paused": self._miniplayer_state["paused"]})
+            queue = self._miniplayer_state.get("queue", [])
+            if queue:
+                self._mp_send({"type": "queue", "tracks": queue})
+            self._mp_send({"type": "airhorn", "enabled": self._miniplayer_state.get("airhorn", True)})
+
+            # Start stdout reader thread
+            threading.Thread(
+                target=self._mp_read_loop, daemon=True
+            ).start()
+        except Exception as e:
+            log.error("Failed to spawn mini player: %s", e)
+            self._miniplayer_proc = None
+
+    def _mp_send(self, msg):
+        """Send a JSON message to the mini player subprocess stdin."""
+        proc = self._miniplayer_proc
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            data = json.dumps(msg) + "\n"
+            proc.stdin.write(data.encode())
+            proc.stdin.flush()
+        except (BrokenPipeError, OSError):
+            log.debug("Mini player pipe broken")
+            self._miniplayer_proc = None
+
+    def _mp_read_loop(self):
+        """Read mini player stdout in a dedicated thread."""
+        proc = self._miniplayer_proc
+        if proc is None:
+            return
+        try:
+            for line in proc.stdout:
+                line = line.decode().strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if msg.get("type") == "closed":
+                    self._miniplayer_proc = None
+                    return
+                elif msg.get("type") == "command":
+                    cmd = msg.get("cmd", "")
+                    if cmd == "toggle_airhorn":
+                        self.channel.send_command("toggle_airhorn")
+                    elif cmd == "pause":
+                        self.channel.send_command("pause")
+                    elif cmd == "resume":
+                        self.channel.send_command("resume")
+        except (OSError, ValueError):
+            pass
+        finally:
+            if self._miniplayer_proc is proc:
+                self._miniplayer_proc = None
+
+    def _quit(self):
+        # Shut down mini player if running
+        if self._miniplayer_proc and self._miniplayer_proc.poll() is None:
+            self._mp_send({"type": "quit"})
+            try:
+                self._miniplayer_proc.wait(timeout=2)
+            except Exception:
+                self._miniplayer_proc.kill()
+            self._miniplayer_proc = None
+        self.channel.send_command("quit")
+        self._running = False
+        self.icon.stop()
 
     def run(self):
         """Start the tray app (blocks on main thread)."""

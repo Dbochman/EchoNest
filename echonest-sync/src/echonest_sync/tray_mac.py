@@ -1,5 +1,6 @@
 """macOS tray app using rumps."""
 
+import json
 import logging
 import os
 import time
@@ -33,13 +34,14 @@ def _resource_path(name):
 
 
 class EchoNestSync(rumps.App):
-    def __init__(self, channel, server=None, token=None, email=None):
+    def __init__(self, channel, server=None, token=None, email=None, player=None):
         super().__init__("EchoNest", icon=_resource_path("icon_grey.png"),
                          template=False, quit_button=None)
         self.channel = channel
         self._server = server
         self._token = token
         self._linked_email = email
+        self._player = player  # local Spotify player for mini player controls
 
         # State
         self._sync_paused = False
@@ -48,6 +50,10 @@ class EchoNestSync(rumps.App):
         self._last_disconnect = 0
         self._current_track = "No track"
         self._airhorn_enabled = True
+
+        # Mini player subprocess
+        self._miniplayer_proc = None
+        self._miniplayer_state = {}  # buffered track/paused state for init
 
         # Menu items
         self.status_item = rumps.MenuItem("Disconnected", callback=None)
@@ -62,6 +68,7 @@ class EchoNestSync(rumps.App):
             self.search_item = rumps.MenuItem("Search & Add Song (link account first)", callback=None)
             self.link_item = rumps.MenuItem("Link Account", callback=self.open_link)
         self.pause_item = rumps.MenuItem("Pause Sync", callback=self.toggle_pause)
+        self.miniplayer_item = rumps.MenuItem("Mini Player", callback=self.toggle_miniplayer)
         self.open_item = rumps.MenuItem("Open EchoNest", callback=self.open_echonest)
         self.update_item = rumps.MenuItem("Check for Updates", callback=self.check_updates)
         self.autostart_item = rumps.MenuItem("Start at Login",
@@ -75,6 +82,7 @@ class EchoNestSync(rumps.App):
             self.open_item,
             None,  # separator
             self.pause_item,
+            self.miniplayer_item,
             self.airhorn_item,
             self.search_item,
             None,
@@ -93,6 +101,7 @@ class EchoNestSync(rumps.App):
         """Poll IPC events from the sync engine."""
         for event in self.channel.get_events():
             self._handle_event(event)
+        self._mp_poll()
 
     def _handle_event(self, event):
         etype = event.type
@@ -103,6 +112,8 @@ class EchoNestSync(rumps.App):
             self._connected = True
             self._update_icon("green")
             self._refresh_status()
+            self._miniplayer_state["status"] = "connected"
+            self._mp_send({"type": "status", "status": "connected"})
             if was_connected:
                 rumps.notification("EchoNest Sync", "", "Reconnected",
                                    sound=False)
@@ -115,6 +126,8 @@ class EchoNestSync(rumps.App):
             self._last_disconnect = time.time()
             self._update_icon("yellow")
             self._refresh_status()
+            self._miniplayer_state["status"] = "disconnected"
+            self._mp_send({"type": "status", "status": "disconnected"})
             reason = kw.get("reason", "")
             if reason == "auth_failed":
                 rumps.notification("EchoNest Sync", "",
@@ -131,6 +144,14 @@ class EchoNestSync(rumps.App):
                 self._current_track = kw.get("uri", "Unknown")
             self.track_item.title = f"♪ {self._current_track}"
             self._refresh_status()
+            # Buffer + forward to mini player
+            self._miniplayer_state["track"] = {
+                "type": "track", "title": title, "artist": artist,
+                "big_img": kw.get("big_img", ""),
+                "duration": kw.get("duration", 0),
+                "paused": self._player_paused,
+            }
+            self._mp_send(self._miniplayer_state["track"])
 
         elif etype == "status_changed":
             status = kw.get("status", "")
@@ -155,14 +176,23 @@ class EchoNestSync(rumps.App):
             elif status == "waiting":
                 self._update_icon("grey")
             self._refresh_status()
+            self._miniplayer_state["status"] = status
+            self._mp_send({"type": "status", "status": status})
 
         elif etype == "player_paused":
             self._player_paused = kw.get("paused", False)
             self._refresh_status()
+            self._miniplayer_state["paused"] = self._player_paused
+            self._mp_send({"type": "paused", "paused": self._player_paused})
+
+        elif etype == "player_position":
+            self._mp_send({"type": "position", "pos": kw.get("pos", 0)})
 
         elif etype == "queue_updated":
             tracks = kw.get("tracks", [])
             self._update_queue(tracks)
+            self._miniplayer_state["queue"] = tracks
+            self._mp_send({"type": "queue", "tracks": tracks})
 
         elif etype == "user_override":
             pass  # Handled via status_changed
@@ -170,6 +200,8 @@ class EchoNestSync(rumps.App):
         elif etype == "airhorn_toggled":
             self._airhorn_enabled = kw.get("enabled", True)
             self._refresh_airhorn_item()
+            self._miniplayer_state["airhorn"] = self._airhorn_enabled
+            self._mp_send({"type": "airhorn", "enabled": self._airhorn_enabled})
 
         elif etype == "airhorn":
             pass  # Sound played by sync engine
@@ -364,6 +396,117 @@ class EchoNestSync(rumps.App):
             enable_autostart()
             self.autostart_item.state = True
 
+    # ------------------------------------------------------------------
+    # Mini player subprocess
+    # ------------------------------------------------------------------
+
+    def toggle_miniplayer(self, _):
+        if self._miniplayer_proc and self._miniplayer_proc.poll() is None:
+            # Running — send quit
+            self._mp_send({"type": "quit"})
+            self._miniplayer_proc = None
+            self.miniplayer_item.state = False
+        else:
+            self._spawn_miniplayer()
+
+    def _spawn_miniplayer(self):
+        import subprocess
+        import sys
+
+        _is_frozen = getattr(sys, "frozen", False)
+        try:
+            if _is_frozen:
+                cmd = [sys.executable, "--miniplayer"]
+            else:
+                cmd = [sys.executable, "-m", "echonest_sync.miniplayer"]
+            self._miniplayer_proc = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            )
+            self.miniplayer_item.state = True
+            log.info("Mini player spawned (pid=%d)", self._miniplayer_proc.pid)
+
+            # Send buffered state so it initializes immediately
+            status = self._miniplayer_state.get("status", "disconnected")
+            self._mp_send({"type": "status", "status": status})
+            track = self._miniplayer_state.get("track")
+            if track:
+                self._mp_send(track)
+            if "paused" in self._miniplayer_state:
+                self._mp_send({"type": "paused", "paused": self._miniplayer_state["paused"]})
+            queue = self._miniplayer_state.get("queue", [])
+            if queue:
+                self._mp_send({"type": "queue", "tracks": queue})
+            self._mp_send({"type": "airhorn", "enabled": self._miniplayer_state.get("airhorn", True)})
+        except Exception as e:
+            log.error("Failed to spawn mini player: %s", e)
+            self._miniplayer_proc = None
+
+    def _mp_send(self, msg):
+        """Send a JSON message to the mini player subprocess stdin."""
+        proc = self._miniplayer_proc
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            import json
+            data = json.dumps(msg) + "\n"
+            proc.stdin.write(data.encode())
+            proc.stdin.flush()
+        except (BrokenPipeError, OSError):
+            log.debug("Mini player pipe broken")
+            self._miniplayer_proc = None
+            self.miniplayer_item.state = False
+
+    def _mp_poll(self):
+        """Check for messages from mini player stdout (non-blocking)."""
+        import json as _json
+        import select
+
+        proc = self._miniplayer_proc
+        if proc is None or proc.poll() is not None:
+            if proc is not None and proc.poll() is not None:
+                log.info("Mini player exited (code=%s)", proc.returncode)
+                self._miniplayer_proc = None
+                self.miniplayer_item.state = False
+            return
+
+        # Non-blocking read via select
+        try:
+            readable, _, _ = select.select([proc.stdout], [], [], 0)
+        except (ValueError, OSError):
+            return
+        if not readable:
+            return
+
+        try:
+            line = proc.stdout.readline()
+            if not line:
+                # EOF — child exited
+                self._miniplayer_proc = None
+                self.miniplayer_item.state = False
+                return
+            msg = _json.loads(line.decode().strip())
+            if msg.get("type") == "closed":
+                self._miniplayer_proc = None
+                self.miniplayer_item.state = False
+            elif msg.get("type") == "command":
+                cmd = msg.get("cmd", "")
+                if cmd == "toggle_airhorn":
+                    self.channel.send_command("toggle_airhorn")
+                elif cmd == "pause":
+                    self.channel.send_command("pause")
+                elif cmd == "resume":
+                    self.channel.send_command("resume")
+        except (json.JSONDecodeError, Exception) as e:
+            log.debug("Mini player IPC error: %s", e)
+
     def quit_app(self, _):
+        # Shut down mini player if running
+        if self._miniplayer_proc and self._miniplayer_proc.poll() is None:
+            self._mp_send({"type": "quit"})
+            try:
+                self._miniplayer_proc.wait(timeout=2)
+            except Exception:
+                self._miniplayer_proc.kill()
+            self._miniplayer_proc = None
         self.channel.send_command("quit")
         rumps.quit_application()
