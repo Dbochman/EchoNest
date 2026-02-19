@@ -161,25 +161,45 @@ class WindowsPlayer(SpotifyPlayer):
 
         os.startfile(uri)
 
-        if prev_hwnd:
-            # Give Spotify a moment to grab focus, then restore the previous window
-            import threading
+        import threading
 
-            def _restore():
-                import time
-                time.sleep(0.5)
+        def _post_open():
+            import time
+            time.sleep(1.0)
+            # os.startfile() selects the track but may not start playback
+            # on newer Spotify versions. Send APPCOMMAND_MEDIA_PLAY (not
+            # play/pause toggle) to the Spotify window to ensure playback.
+            self._send_appcommand(46)  # APPCOMMAND_MEDIA_PLAY
+
+            if prev_hwnd:
                 try:
-                    user32.SetForegroundWindow(prev_hwnd)
+                    ctypes.windll.user32.SetForegroundWindow(prev_hwnd)
                 except Exception:
                     pass
 
-            threading.Thread(target=_restore, daemon=True).start()
+        threading.Thread(target=_post_open, daemon=True).start()
+
+    def _send_appcommand(self, command_id):
+        """Send a WM_APPCOMMAND to the Spotify window."""
+        try:
+            import ctypes
+            WM_APPCOMMAND = 0x0319
+            lparam = command_id << 16
+            hwnd = ctypes.windll.user32.FindWindowW("SpotifyMainWindow", None)
+            if not hwnd:
+                hwnd = ctypes.windll.user32.FindWindowW(None, "Spotify")
+            if hwnd:
+                ctypes.windll.user32.SendMessageW(hwnd, WM_APPCOMMAND, 0, lparam)
+            else:
+                log.debug("Spotify window not found")
+        except Exception as e:
+            log.debug("Failed to send app command %d: %s", command_id, e)
 
     def pause(self):
-        log.warning("pause not supported on Windows")
+        self._send_appcommand(47)  # APPCOMMAND_MEDIA_PAUSE
 
     def resume(self):
-        log.warning("resume not supported on Windows")
+        self._send_appcommand(46)  # APPCOMMAND_MEDIA_PLAY
 
     def seek_to(self, seconds):
         log.debug("seek not supported on Windows")
