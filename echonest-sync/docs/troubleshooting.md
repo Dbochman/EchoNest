@@ -23,19 +23,13 @@
 
 This usually means override detection kicked in — the app detected that you manually changed the track in Spotify. Click **Resume Sync** in the tray menu to restart syncing.
 
-## macOS Gatekeeper Warning
+## macOS Gatekeeper Warning (v0.7.1 and earlier)
 
 **Symptom**: "EchoNest Sync can't be opened because Apple cannot check it for malicious software"
 
-The app is ad-hoc signed but not notarized with Apple. To open it:
+This was fixed in v0.7.2 — the app is now signed with an Apple Developer ID and notarized. Update to the latest release to resolve this.
 
-1. Right-click the app in Applications and choose **Open**, or
-2. Run in Terminal:
-   ```bash
-   xattr -cr "/Applications/EchoNest Sync.app"
-   ```
-
-You only need to do this once.
+If you're on an older version, you can work around it by right-clicking the app and choosing **Open**, or running `xattr -cr "/Applications/EchoNest Sync.app"` in Terminal.
 
 ## macOS Keychain Permission Prompt
 

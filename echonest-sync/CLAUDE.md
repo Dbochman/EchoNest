@@ -30,21 +30,21 @@ Must use system Python (`/usr/local/bin/python3`), NOT Xcode Python.
 ```bash
 cd echonest-sync
 
-# 1. Build the .app bundle
+# 1. Build, sign (Developer ID), and notarize the .app
+rm -rf "dist/EchoNest Sync.app"
 /usr/local/bin/python3 build/macos/build_app.py
 
-# 2. Build the DMG installer
+# 2. Build, notarize, and staple the DMG
 /usr/local/bin/python3 build/macos/build_dmg.py
 
-# Output: dist/EchoNest-Sync.dmg
+# Output: dist/EchoNest-Sync.dmg (signed + notarized)
 ```
 
-**Rebuilding**: The codesigned `.app` has immutable files. You must `sudo rm -rf "dist/EchoNest Sync.app"` before rebuilding.
+Pass `--adhoc` to either script for local dev builds (skips notarization).
 
-**Installing locally**: Open the DMG, drag to Applications, then clear quarantine:
-```bash
-xattr -cr "/Applications/EchoNest Sync.app"
-```
+**Rebuilding**: The codesigned `.app` has immutable files. You must `rm -rf "dist/EchoNest Sync.app"` before rebuilding.
+
+**Installing locally**: Open the DMG and drag to Applications. No `xattr -cr` needed — the app is signed and notarized.
 
 ### Windows (.exe)
 
@@ -58,7 +58,7 @@ python build/windows/build_exe.py
 ## Key Gotchas
 
 - **`sys.executable` in PyInstaller**: Points to the frozen binary, NOT Python. Never pass `-m module` args to it. Use `getattr(sys, 'frozen', False)` to detect.
-- **Codesign required for Keychain**: PyInstaller bundle must be ad-hoc signed or macOS Keychain rejects `keyring.set_password()`. The build script handles this automatically.
+- **Codesign required for Keychain**: PyInstaller bundle must be signed or macOS Keychain rejects `keyring.set_password()`. The build script signs with Developer ID by default (or `--adhoc` for local dev).
 - **tkinter + rumps**: Cannot create `Tk()` when rumps owns the main thread (segfault). Use native `NSAlert` with `setAccessoryView_()` for input dialogs on macOS.
 - **config DEFAULTS**: `load_config()` only reads keys present in the `DEFAULTS` dict. New config keys must be added there or they're silently dropped.
 - **DMG stuck eject**: Spotlight can hold DMG volumes open. The build script adds `.metadata_never_index` and uses `-nobrowse` mount flag to prevent this.

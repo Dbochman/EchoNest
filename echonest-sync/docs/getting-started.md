@@ -25,15 +25,6 @@ Download the latest release for your platform from [GitHub Releases](https://git
 - **macOS**: Download the `.dmg` file, open it, and drag **EchoNest Sync** to your Applications folder
 - **Windows**: Download the `.exe` file and run it
 
-#### macOS Gatekeeper Warning
-
-Since the app isn't signed with an Apple Developer ID, macOS will show a warning on first launch. To clear it:
-
-1. Right-click the app in Applications and choose **Open**, or
-2. Run in Terminal: `xattr -cr "/Applications/EchoNest Sync.app"`
-
-You only need to do this once.
-
 ### Option 2: Homebrew (macOS — CLI only)
 
 ```bash

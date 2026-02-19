@@ -263,7 +263,7 @@ Optional feature: users link their Google account so songs added via the API use
 - `rumps.notification()` doesn't work reliably from background threads — use `NSAlert` (synchronous, main thread) or menu item text changes instead.
 - macOS dock icon shows "Python" for pip-installed scripts — use `NSApplicationActivationPolicyAccessory` to hide it (`.app` bundles use `LSUIElement` in Info.plist instead).
 - Tests must mock `get_token`/`get_config_dir` to isolate from real keyring, or CLI tests will connect to live servers.
-- PyInstaller bundle must be ad-hoc codesigned or macOS Keychain rejects `keyring.set_password()` with `-67030` (SecAuthFailure). The build script handles this automatically.
+- PyInstaller bundle must be codesigned or macOS Keychain rejects `keyring.set_password()` with `-67030` (SecAuthFailure). The build script signs with Developer ID by default (`--adhoc` for local dev).
 - `sys.executable` in a frozen PyInstaller bundle points to the binary, not a Python interpreter — never pass `-m module` args to it. Use `getattr(sys, 'frozen', False)` to detect.
 - SSE streaming response blocks the engine thread indefinitely. On quit, `_sse_response.close()` must be called to unblock the iterator.
 - tkinter `Tk()` cannot be created on a background thread when rumps owns the main thread on macOS — use `NSAlert` with `setAccessoryView_()` for input dialogs instead.
@@ -272,7 +272,7 @@ Optional feature: users link their Google account so songs added via the API use
 
 ### Packaging
 
-- `build/macos/build_app.py` — PyInstaller `.app` bundle (`icon.icns`), auto ad-hoc codesigned. Run with `/usr/local/bin/python3` (not Xcode python).
+- `build/macos/build_app.py` — PyInstaller `.app` bundle, Developer ID signed + notarized. Run with `/usr/local/bin/python3` (not Xcode python). Pass `--adhoc` for local dev.
 - `build/windows/build_exe.py` — PyInstaller `.exe` (onefile, `icon.ico`)
 - `.github/workflows/echonest-sync.yml` — CI test matrix + build/release on `sync-v*` tags
 
