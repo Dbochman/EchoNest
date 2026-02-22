@@ -18,7 +18,9 @@ All notable changes to EchoNest are documented in this file.
 
 - **Per-User WebSocket Rate Limiting** — Added Redis-backed rate limits: 50 songs/hour, 20 airhorns/hour, 30 comments/hour per user. Uses `INCR`/`EXPIRE` pattern with 1-hour sliding window.
 
-**Files Changed**: `app.py`
+- **Deploy Slack Cooldown** — `notify_deploy()` now rate-limited to once per 5 minutes via Redis `SET NX` (`SLACK|deploy_cooldown`). Prevents Slack spam during container crash loops.
+
+**Files Changed**: `app.py`, `slack.py`
 **Docs Updated**: `SECURITY.md` (sections 16–20, new verification commands, changelog)
 
 ---
