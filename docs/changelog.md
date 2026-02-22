@@ -4,6 +4,25 @@ All notable changes to EchoNest are documented in this file.
 
 ---
 
+## 2026-02-21
+
+### Security
+
+- **Structured Audit Logging** — Added `_log_action()` helper that writes structured log lines (`AUDIT action=... email=... ip=... ua=...`) to container stdout for forensic analysis. Logged at: login, WebSocket connect/disconnect, API token auth success/failure, legacy REST routes.
+
+- **Legacy REST Route Authentication** — `/add_song`, `/blast_airhorn`, `/jam` now require session or API token auth. Previously accepted unauthenticated POST requests with client-supplied email (identity spoofing). Removed from `SAFE_PARAM_PATHS`.
+
+- **CORS Origin Validation** — Replaced wildcard CORS handler (echoed any origin with credentials) with an allowlist of known origins (`CONF.HOSTNAME` + localhost in debug mode). Unknown origins get no CORS headers.
+
+- **Comment Identity Spoofing Fix** — `on_add_comment()` now ignores client-supplied `user_id` and uses the authenticated WebSocket session email.
+
+- **Per-User WebSocket Rate Limiting** — Added Redis-backed rate limits: 50 songs/hour, 20 airhorns/hour, 30 comments/hour per user. Uses `INCR`/`EXPIRE` pattern with 1-hour sliding window.
+
+**Files Changed**: `app.py`
+**Docs Updated**: `SECURITY.md` (sections 16–20, new verification commands, changelog)
+
+---
+
 ## 2026-02-13
 
 ### echonest-sync v0.5.0

@@ -270,6 +270,82 @@ def require_api_token(f):
 - API paths return JSON errors, never 302 redirects to login page
 - Fixed `API_EMAIL = 'openclaw@api'` used for audit trail (not a real user)
 
+### 16. Structured Audit Logging (High)
+
+**Risk**: No forensic data for investigating abuse or unauthorized access — only aggregate daily counters.
+
+**Implementation**:
+- `_log_action()` helper writes structured log lines to container stdout (captured by `docker compose logs`)
+- Format: `AUDIT action=<action> email=<email> ip=<ip> ua=<user-agent> <extra_fields>`
+- Zero new infrastructure — uses existing container log pipeline
+
+**Logged actions**:
+| Action | Where | Notes |
+|--------|-------|-------|
+| `auth_redirect` | `require_auth` | Unauthenticated request redirected to login |
+| `login` | OAuth callback | Successful Google login |
+| `ws_connect` | WebSocket open | Includes nest_id |
+| `ws_disconnect` | WebSocket close | Includes nest_id |
+| `api_auth_ok` | `require_api_token` | Successful API token auth (includes path) |
+| `api_auth_fail` | `require_api_token` | Failed API token auth (includes path) |
+| `add_song` | `/add_song` route | Includes track_uri |
+| `blast_airhorn` | `/blast_airhorn` route | Includes airhorn name |
+| `jam` | `/jam` route | Includes song_id |
+
+**Querying audit logs**:
+```bash
+# All audit events
+ssh deploy@echone.st "docker compose logs echonest | grep AUDIT"
+
+# Failed API auth attempts
+ssh deploy@echone.st "docker compose logs echonest | grep 'AUDIT action=api_auth_fail'"
+
+# Activity for a specific user
+ssh deploy@echone.st "docker compose logs echonest | grep 'AUDIT.*email=user@example.com'"
+```
+
+### 17. Legacy REST Route Authentication (High)
+
+**Risk**: `/add_song`, `/blast_airhorn`, `/jam` accepted unauthenticated POST requests with client-supplied `email` — anyone could add songs or trigger airhorns as any user.
+
+**Implementation**:
+- Applied `@require_session_or_api_token` decorator to all three routes
+- Routes now use `g.auth_email` (authenticated identity) instead of client-supplied `email` parameter
+- Removed `/add_song`, `/blast_airhorn`, `/jam` from `SAFE_PARAM_PATHS`
+- Browser sessions and API tokens both still work
+
+### 18. CORS Origin Validation (High)
+
+**Risk**: `add_cors_header()` echoed any `Origin` header with `Access-Control-Allow-Credentials: true` — effectively open CORS with cookies, enabling cross-site request forgery from any domain.
+
+**Implementation**:
+- Allowlist built from `CONF.HOSTNAME` (http + https) plus localhost:5000/5001 in DEBUG mode
+- Only whitelisted origins get `Access-Control-Allow-Origin` + `Access-Control-Allow-Credentials` headers
+- Unknown origins receive no CORS headers (browser blocks the request)
+
+### 19. WebSocket Identity Spoofing Fix (Medium)
+
+**Risk**: `on_add_comment()` trusted client-supplied `user_id` parameter — users could post comments as other users.
+
+**Implementation**: Ignore the `user_id` parameter and use `self.email` (authenticated session identity).
+
+### 20. Per-User WebSocket Rate Limiting (Medium)
+
+**Risk**: No rate limits on WebSocket actions — a single user could flood the queue, spam airhorns, or fill comments.
+
+**Implementation**:
+- `_check_rate_limit()` helper using Redis `INCR`/`EXPIRE` (1-hour sliding window)
+- Generous limits that prevent abuse without impacting normal use
+
+| Action | Limit | Window |
+|--------|-------|--------|
+| `on_add_song` | 50/hour | 3600s |
+| `on_airhorn` | 20/hour | 3600s |
+| `on_add_comment` | 30/hour | 3600s |
+
+- Rate-limited users receive a WebSocket error message explaining the limit
+- Redis keys: `RATE|{action}|{email}` with automatic TTL expiry
+
 ---
 
 ## Verification Commands
@@ -345,6 +421,24 @@ curl -s -o /dev/null -w "%{http_code}" -X POST https://echone.st/api/queue/skip 
 # 14. Verify API accepts valid token
 curl -s -o /dev/null -w "%{http_code}" -X POST https://echone.st/api/queue/skip -H "Authorization: Bearer \$ECHONEST_API_TOKEN"
 # Expected: 200
+
+# === Application Security (v2) ===
+
+# 15. Verify legacy routes require auth
+curl -s -o /dev/null -w "%{http_code}" -X POST https://echone.st/add_song -d 'track_uri=x&email=fake'
+# Expected: 401 (not 200)
+
+# 16. Verify CORS blocks unknown origins
+curl -s -I -H 'Origin: https://evil.com' https://echone.st/ | grep -i access-control-allow-origin
+# Expected: No output (header not present)
+
+# 17. Verify CORS allows known origin
+curl -s -I -H "Origin: https://echone.st" https://echone.st/ | grep -i access-control-allow-origin
+# Expected: Access-Control-Allow-Origin: https://echone.st
+
+# 18. Verify audit logging
+ssh deploy@echone.st "docker compose logs echonest --tail=50 | grep AUDIT"
+# Expected: Structured AUDIT log lines
 ```
 
 ---
@@ -434,3 +528,8 @@ docker compose up -d --build
 | 2026-02-07 | Added token-authenticated REST API endpoints with constant-time comparison |
 | 2026-02-07 | Re-hardened SSH (PasswordAuthentication=no, PermitRootLogin=no) |
 | 2026-02-07 | Added Spotify Connect REST API endpoints (devices, transfer, status) with token auth |
+| 2026-02-21 | Added structured audit logging (`_log_action`) with request context (IP, user-agent) |
+| 2026-02-21 | Secured legacy REST routes (`/add_song`, `/blast_airhorn`, `/jam`) with session/token auth |
+| 2026-02-21 | Fixed CORS to allowlist known origins instead of echoing any origin with credentials |
+| 2026-02-21 | Fixed WebSocket comment identity spoofing (`on_add_comment` uses authenticated email) |
+| 2026-02-21 | Added per-user rate limiting on WebSocket actions (add_song, airhorn, comment) |

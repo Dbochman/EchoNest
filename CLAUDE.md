@@ -119,11 +119,15 @@ Backbone.js + jQuery served as static files. Main logic in `static/js/app.js`. N
 - New users see a Spotify connect interstitial after Google sign-in (`templates/spotify_prompt.html`); returning users with cached tokens skip straight to the app
 - `DEV_AUTH_EMAIL` bypasses OAuth when `DEBUG=true` on localhost
 - Public endpoints defined in `SAFE_PATHS` and `SAFE_PARAM_PATHS` lists in `app.py`
+- Legacy REST routes (`/add_song`, `/blast_airhorn`, `/jam`) use `@require_session_or_api_token` — accepts browser sessions or API tokens, uses `g.auth_email` (not client-supplied email)
 - REST API endpoints under `/api/` use `@require_api_token` decorator with `secrets.compare_digest` for constant-time token comparison
 - `/api/` is in `SAFE_PARAM_PATHS` (bypasses session auth); token auth handled by decorator
 - Config: set `ECHONEST_API_TOKEN` via environment variable or yaml config
 - Spotify Connect endpoints (`/api/spotify/*`) use the same Bearer token auth; require `ECHONEST_SPOTIFY_EMAIL` to be set and the corresponding user to have completed Spotify OAuth via the browser
 - Read endpoints: `GET /api/queue` (full metadata including vote, jam, comments, duration, score), `GET /api/playing` (now-playing with server timestamp), `GET /api/events` (SSE stream), `GET /api/stats?days=N` (analytics with Spotify API/OAuth breakdowns)
+- CORS: allowlist-based origin validation (production hostname + localhost in debug). See `_ALLOWED_ORIGINS` in `app.py`
+- Audit logging: `_log_action()` writes structured `AUDIT` lines to container stdout (login, ws_connect, api_auth_ok/fail, etc.)
+- Per-user rate limits on WebSocket actions: `_check_rate_limit()` with Redis INCR/EXPIRE (50 songs/hr, 20 airhorns/hr, 30 comments/hr)
 
 ### Redis Data
 - Strings decoded automatically (`decode_responses=True`)
