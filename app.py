@@ -869,6 +869,99 @@ else:
 
 logger.info('OAuth redirect URIs: %s, %s', REDIRECT_URI, SPOTIFY_REDIRECT_URI)
 
+# ---------------------------------------------------------------------------
+# Auth decorators (must be defined before routes that use them)
+# ---------------------------------------------------------------------------
+
+API_EMAIL = 'openclaw@api'
+
+# Cache for linked users set (refreshed every 60s to avoid Redis round-trip on every request)
+_linked_users_cache = {'users': set(), 'ts': 0}
+
+
+def _compute_user_token(email):
+    """Compute deterministic per-user sync token: HMAC-SHA256(SECRET_KEY, "sync:" + email)."""
+    return hmac.new(
+        CONF.SECRET_KEY.encode() if isinstance(CONF.SECRET_KEY, str) else CONF.SECRET_KEY,
+        ('sync:' + email).encode(),
+        'sha256',
+    ).hexdigest()
+
+
+def _get_linked_users():
+    """Return set of linked user emails, cached for 60s."""
+    now = time.time()
+    if now - _linked_users_cache['ts'] > 60:
+        try:
+            _linked_users_cache['users'] = d._r.smembers('SYNC_LINKED_USERS') or set()
+        except Exception:
+            pass
+        _linked_users_cache['ts'] = now
+    return _linked_users_cache['users']
+
+
+def require_api_token(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        from flask import g
+        configured_token = CONF.ECHONEST_API_TOKEN
+        if not configured_token:
+            return jsonify(error='API token not configured on server'), 503
+
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            resp = jsonify(error='Missing or malformed Authorization header')
+            resp.status_code = 401
+            resp.headers['WWW-Authenticate'] = 'Bearer'
+            return resp
+
+        provided_token = auth_header[7:]  # strip "Bearer "
+
+        # Check shared API token first (fast path)
+        if secrets.compare_digest(provided_token, configured_token):
+            g.auth_email = API_EMAIL
+            _log_action('api_auth_ok', API_EMAIL, path=request.path)
+            return f(*args, **kwargs)
+
+        # Check per-user sync tokens
+        for email in _get_linked_users():
+            expected = _compute_user_token(email)
+            if secrets.compare_digest(provided_token, expected):
+                g.auth_email = email
+                _log_action('api_auth_ok', email, path=request.path)
+                return f(*args, **kwargs)
+
+        _log_action('api_auth_fail', '-', path=request.path)
+        return jsonify(error='Invalid API token'), 403
+
+    return decorated
+
+
+def require_session_or_api_token(f):
+    """Allow access via session auth (browser) OR API token (programmatic).
+    Sets g.auth_email to the authenticated user's email."""
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        from flask import g
+        # Check session auth first (browser users)
+        email = _get_authenticated_email()
+        if email:
+            g.auth_email = email
+            return f(*args, **kwargs)
+        # Fall back to API token auth
+        configured_token = CONF.ECHONEST_API_TOKEN
+        auth_header = request.headers.get('Authorization', '')
+        if configured_token and auth_header.startswith('Bearer '):
+            provided_token = auth_header[7:]
+            if secrets.compare_digest(provided_token, configured_token):
+                g.auth_email = API_EMAIL
+                return f(*args, **kwargs)
+        resp = jsonify(error='Authentication required')
+        resp.status_code = 401
+        return resp
+    return decorated
+
+
 @app.route('/health')
 def health():
     return jsonify(status='ok')
@@ -1583,95 +1676,6 @@ def _markdown_to_html(text):
 # ---------------------------------------------------------------------------
 # REST API (token-authenticated, for programmatic access e.g. OpenClaw)
 # ---------------------------------------------------------------------------
-
-API_EMAIL = 'openclaw@api'
-
-# Cache for linked users set (refreshed every 60s to avoid Redis round-trip on every request)
-_linked_users_cache = {'users': set(), 'ts': 0}
-
-
-def _compute_user_token(email):
-    """Compute deterministic per-user sync token: HMAC-SHA256(SECRET_KEY, "sync:" + email)."""
-    return hmac.new(
-        CONF.SECRET_KEY.encode() if isinstance(CONF.SECRET_KEY, str) else CONF.SECRET_KEY,
-        ('sync:' + email).encode(),
-        'sha256',
-    ).hexdigest()
-
-
-def _get_linked_users():
-    """Return set of linked user emails, cached for 60s."""
-    now = time.time()
-    if now - _linked_users_cache['ts'] > 60:
-        try:
-            _linked_users_cache['users'] = d._r.smembers('SYNC_LINKED_USERS') or set()
-        except Exception:
-            pass
-        _linked_users_cache['ts'] = now
-    return _linked_users_cache['users']
-
-
-def require_api_token(f):
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        from flask import g
-        configured_token = CONF.ECHONEST_API_TOKEN
-        if not configured_token:
-            return jsonify(error='API token not configured on server'), 503
-
-        auth_header = request.headers.get('Authorization', '')
-        if not auth_header.startswith('Bearer '):
-            resp = jsonify(error='Missing or malformed Authorization header')
-            resp.status_code = 401
-            resp.headers['WWW-Authenticate'] = 'Bearer'
-            return resp
-
-        provided_token = auth_header[7:]  # strip "Bearer "
-
-        # Check shared API token first (fast path)
-        if secrets.compare_digest(provided_token, configured_token):
-            g.auth_email = API_EMAIL
-            _log_action('api_auth_ok', API_EMAIL, path=request.path)
-            return f(*args, **kwargs)
-
-        # Check per-user sync tokens
-        for email in _get_linked_users():
-            expected = _compute_user_token(email)
-            if secrets.compare_digest(provided_token, expected):
-                g.auth_email = email
-                _log_action('api_auth_ok', email, path=request.path)
-                return f(*args, **kwargs)
-
-        _log_action('api_auth_fail', '-', path=request.path)
-        return jsonify(error='Invalid API token'), 403
-
-    return decorated
-
-
-def require_session_or_api_token(f):
-    """Allow access via session auth (browser) OR API token (programmatic).
-    Sets g.auth_email to the authenticated user's email."""
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        from flask import g
-        # Check session auth first (browser users)
-        email = _get_authenticated_email()
-        if email:
-            g.auth_email = email
-            return f(*args, **kwargs)
-        # Fall back to API token auth
-        configured_token = CONF.ECHONEST_API_TOKEN
-        auth_header = request.headers.get('Authorization', '')
-        if configured_token and auth_header.startswith('Bearer '):
-            provided_token = auth_header[7:]
-            if secrets.compare_digest(provided_token, configured_token):
-                g.auth_email = API_EMAIL
-                return f(*args, **kwargs)
-        resp = jsonify(error='Authentication required')
-        resp.status_code = 401
-        return resp
-    return decorated
-
 
 @app.route('/api/queue/remove', methods=['POST'])
 @require_api_token
