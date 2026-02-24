@@ -247,6 +247,16 @@ class DB(object):
         if is_nest_deleting(self._r, self.nest_id):
             raise RuntimeError("Nest is being deleted")
 
+    def _purge_stale_queue_entries(self):
+        """Remove song IDs from the priority queue whose QUEUE hash has expired."""
+        queue_key = self._key('MISC|priority-queue')
+        song_ids = self._r.zrange(queue_key, 0, -1)
+        stale = [sid for sid in song_ids if not self._r.exists(self._key('QUEUE|{0}'.format(sid)))]
+        if stale:
+            logger.warning("Purging %d stale queue entry/entries: %s", len(stale), stale)
+            self._r.zrem(queue_key, *stale)
+        return len(song_ids) - len(stale)
+
     def _check_queue_depth(self, client=None):
         """Raise RuntimeError if a non-main nest's queue has reached max depth."""
         if self.nest_id == "main":
@@ -701,7 +711,7 @@ class DB(object):
             min_depth = 1
         if not CONF.USE_BENDER:
             return
-        queue_size = self._r.zcard(self._key('MISC|priority-queue'))
+        queue_size = self._purge_stale_queue_entries()
         if queue_size >= min_depth:
             return
         needed = min_depth - queue_size
@@ -1597,19 +1607,15 @@ class DB(object):
         return raw
 
     def get_queued(self):
+        self._purge_stale_queue_entries()
         songs = self._r.zrange(self._key('MISC|priority-queue'), 0, -1, withscores=True)
         rv = []
-        stale_ids = []
         for k in songs:
             data = self.get_song_from_queue(k[0])
             if not data or 'src' not in data:
-                stale_ids.append(k[0])
                 continue
             data["score"] = k[1]
             rv.append(data)
-        if stale_ids:
-            logger.warning("Removing %d stale song(s) from queue: %s", len(stale_ids), stale_ids)
-            self._r.zrem(self._key('MISC|priority-queue'), *stale_ids)
         rv.append(self.get_additional_src())
         return rv
 
