@@ -1599,12 +1599,17 @@ class DB(object):
     def get_queued(self):
         songs = self._r.zrange(self._key('MISC|priority-queue'), 0, -1, withscores=True)
         rv = []
+        stale_ids = []
         for k in songs:
             data = self.get_song_from_queue(k[0])
-            if not data:
+            if not data or 'src' not in data:
+                stale_ids.append(k[0])
                 continue
             data["score"] = k[1]
             rv.append(data)
+        if stale_ids:
+            logger.warning("Removing %d stale song(s) from queue: %s", len(stale_ids), stale_ids)
+            self._r.zrem(self._key('MISC|priority-queue'), *stale_ids)
         rv.append(self.get_additional_src())
         return rv
 
