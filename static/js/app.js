@@ -1063,15 +1063,25 @@ function spotify_search(q){
                 ids.push(tracks[i].uri.split(":").slice(-1));
             }
         }
-        // turn track IDs into decorated entities from the API with
-        // album art, etc etc 0- this will need to change once 
-        // the endpoint returns more than just tracks
-        return $.ajax({url:'https://api.spotify.com/v1/tracks',
-                        dataType:'json',
-                        headers:{Authorization:"Bearer "+search_token},
-                        data:{"ids": ids.join()}}).then(function(data) {
-                            return {'intent': intent, 'tracks': data.tracks};
-                        });
+        // Fetch full track objects individually (batch GET /tracks was removed Feb 2026)
+        var trackPromises = ids.map(function(id) {
+            return $.ajax({
+                url: 'https://api.spotify.com/v1/tracks/' + id,
+                dataType: 'json',
+                headers: {Authorization: "Bearer " + search_token}
+            });
+        });
+        return $.when.apply($, trackPromises).then(function() {
+            var tracks = [];
+            if (trackPromises.length === 1) {
+                tracks.push(arguments[0]);
+            } else {
+                for (var i = 0; i < arguments.length; i++) {
+                    tracks.push(arguments[i][0]);
+                }
+            }
+            return {'intent': intent, 'tracks': tracks};
+        });
     });
 }
  
@@ -1144,25 +1154,46 @@ function spotify_uri_search(q) {
                 return available;
             });
         } else if (type == 'artist') {
-            // artist URI, look up top tracks for the artist
-            return $.ajax ({
-                url:'https://api.spotify.com/v1/artists/' + id + '/top-tracks',
+            // artist URI: fetch albums then sample tracks (top-tracks endpoint removed Feb 2026)
+            return $.ajax({
+                url: 'https://api.spotify.com/v1/artists/' + id + '/albums',
                 dataType: 'json',
-                headers:{Authorization:"Bearer "+search_token},
-                data: {country:top_tracks_region} // top tracks REQUIRES a country
+                headers: {Authorization: "Bearer " + search_token},
+                data: {include_groups: 'album,single', limit: 5}
             }).then(function(data) {
-                  return data.tracks;
+                if (!data.items || data.items.length === 0) return [];
+                var albumPromises = data.items.slice(0, 3).map(function(album) {
+                    return $.ajax({
+                        url: 'https://api.spotify.com/v1/albums/' + album.id,
+                        dataType: 'json',
+                        headers: {Authorization: "Bearer " + search_token}
+                    });
                 });
+                return $.when.apply($, albumPromises).then(function() {
+                    var tracks = [];
+                    var results = albumPromises.length === 1 ? [arguments] : Array.prototype.slice.call(arguments);
+                    for (var i = 0; i < results.length; i++) {
+                        var albumData = results[i][0];
+                        var albumClone = JSON.parse(JSON.stringify(albumData));
+                        albumClone.tracks = [];
+                        for (var j = 0; j < albumData.tracks.items.length; j++) {
+                            albumData.tracks.items[j]['album'] = albumClone;
+                            tracks.push(albumData.tracks.items[j]);
+                        }
+                    }
+                    return tracks;
+                });
+            });
         }
     }
 }
 
 function spotify_playlist_search(playlistId) {
     return $.ajax({
-        url: 'https://api.spotify.com/v1/playlists/' + playlistId + '/tracks',
+        url: 'https://api.spotify.com/v1/playlists/' + playlistId + '/items',
         dataType: 'json',
         headers: {Authorization: "Bearer " + search_token},
-        data: {limit: 20, fields: 'items(track(uri,name,artists,album,duration_ms))'}
+        data: {limit: 10, fields: 'items(item(uri,name,artists,album,duration_ms))'}
     }).then(function(data) {
         var tracks = [];
         if (!data.items) {
@@ -1170,8 +1201,8 @@ function spotify_playlist_search(playlistId) {
             return {tracks: [], unavailable: true};
         }
         for (var i = 0; i < data.items.length; i++) {
-            if (data.items[i].track) {
-                tracks.push(data.items[i].track);
+            if (data.items[i].item) {
+                tracks.push(data.items[i].item);
             }
         }
         return {tracks: tracks, unavailable: false};
@@ -1423,7 +1454,7 @@ function uri_search_submit(ev){
             url:'https://api.spotify.com/v1/search',
             dataType:'json',
             headers:{Authorization:"Bearer "+search_token},
-            data:{q:input,type:'track',limit:50}
+            data:{q:input,type:'track',limit:10}
         }).then(function(data){
             var available = [];
             for (var i=0;i<data.tracks.items.length; ++i) {
@@ -1449,7 +1480,7 @@ function podcast_search_submit(ev){
         url:'https://api.spotify.com/v1/search',
         dataType:'json',
         headers:{Authorization:"Bearer "+search_token},
-        data:{q:input, type:'episode', limit:50, market:'US'}
+        data:{q:input, type:'episode', limit:10, market:'US'}
     }).then(function(data){
         console.log("Podcast search response:", data);
         var episodes = [];
