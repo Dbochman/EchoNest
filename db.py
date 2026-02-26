@@ -189,7 +189,7 @@ def parse_yt_duration(d):
 
 class DB(object):
     STRATEGY_WEIGHTS_DEFAULT = {
-        'genre': 35, 'throwback': 30, 'artist_search': 25, 'artist_albums': 5, 'album': 5,
+        'genre': 35, 'throwback': 30, 'artist_search': 25, 'artist_album_tracks': 5, 'album': 5,
     }
 
     # Maps strategy name to its Redis cache key suffix (bare keys, resolved via _cache_key())
@@ -197,7 +197,7 @@ class DB(object):
         'genre': 'BENDER|cache:genre',
         'throwback': 'BENDER|cache:throwback',
         'artist_search': 'BENDER|cache:artist-search',
-        'artist_albums': 'BENDER|cache:artist-albums',
+        'artist_album_tracks': 'BENDER|cache:artist-albums',
         'album': 'BENDER|cache:album',
     }
 
@@ -468,8 +468,8 @@ class DB(object):
             uris = self._fetch_genre_tracks(seed_info, market, limit)
         elif strategy == 'artist_search':
             uris = self._fetch_artist_search_tracks(seed_info, market, limit)
-        elif strategy == 'artist_albums':
-            uris = self._fetch_artist_albums_tracks(seed_info, market)
+        elif strategy == 'artist_album_tracks':
+            uris = self._fetch_artist_album_tracks(seed_info, market)
         elif strategy == 'album':
             uris = self._fetch_album_tracks(seed_info)
         else:
@@ -565,7 +565,7 @@ class DB(object):
             logger.warning("Error searching for artist '%s': %s", artist_name, e)
             return []
 
-    def _fetch_artist_albums_tracks(self, seed_info, market):
+    def _fetch_artist_album_tracks(self, seed_info, market):
         """Get tracks from the seed artist's albums (replaces removed top-tracks endpoint)."""
         if not seed_info:
             return []
@@ -575,7 +575,7 @@ class DB(object):
         try:
             albums = spotify_client.artist_albums(artist_id, album_type='album,single',
                                                   country=market, limit=5)
-            analytics.track(self._r, 'spotify_api_artist_albums')
+            analytics.track(self._r, 'spotify_api_artist_album_tracks')
             album_ids = [a['id'] for a in albums.get('items', [])]
             if not album_ids:
                 return []

@@ -31,7 +31,7 @@ EchoNest uses a Spotify app in **Development Mode** with Client ID created befor
 ### App-Level (no per-user auth needed)
 - **Search**: Uses app-level SpotifyOAuth token — not subject to per-user limits
 - **Metadata**: Track info, album art, artist data
-- **Bender recommendations**: `artist_albums()` + `album_tracks()`, `search()` (paginated, max 10/page)
+- **Bender recommendations**: `artist_album_tracks()` + `album_tracks()`, `search()` (paginated, max 10/page)
 
 ### Per-User Auth (subject to 5-user limit)
 - **Sync Audio / Playback Control**: `PUT /v1/me/player/play` — requires per-user OAuth token with `streaming user-read-currently-playing user-read-playback-state user-modify-playback-state` scopes
@@ -141,7 +141,7 @@ Each nest creator registers their own Spotify Developer app and provides their C
 Spotify removed several endpoints in Feb 2026 (enforced March 9 for existing apps). See `docs/spotify-feb2026-migration.md` for the full migration plan.
 
 **Removed endpoints we used (all migrated):**
-- `GET /artists/{id}/top-tracks` — replaced with `artist_albums()` + `album_tracks()`
+- `GET /artists/{id}/top-tracks` — replaced with `artist_album_tracks()` + `album_tracks()`
 - `GET /tracks` (batch) — replaced with individual `GET /tracks/{id}` calls
 - `GET /playlists/{id}/tracks` — renamed to `/playlists/{id}/items`, field `track` → `item`
 
