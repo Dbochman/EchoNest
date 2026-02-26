@@ -1341,19 +1341,15 @@ function uri_search_submit(ev){
     var spotify_url_re = /https?:\/\/open\.spotify\.com\/(track|album|playlist)\/([\w]+)/;
     var spotify_uri_re = /^spotify:/;
 
-    // Multi-line paste: detect multiple Spotify track URLs (copied from Spotify app)
-    var lines = input.trim().split(/[\n\r]+/);
-    var spotify_track_url_re = /https?:\/\/open\.spotify\.com\/track\/([\w]+)/;
-    if (lines.length > 1) {
-        var trackIds = [];
-        for (var i = 0; i < lines.length; i++) {
-            var m = lines[i].trim().match(spotify_track_url_re);
-            if (m) trackIds.push(m[1]);
-        }
-        if (trackIds.length > 1) {
-            spotify_multi_track_fetch(trackIds);
-            return;
-        }
+    // Multi-URL paste: detect multiple Spotify track URLs (newline, space, or mixed separated)
+    var spotify_track_url_re_g = /https?:\/\/open\.spotify\.com\/track\/([\w]+)/g;
+    var multiMatch, trackIds = [];
+    while ((multiMatch = spotify_track_url_re_g.exec(input)) !== null) {
+        trackIds.push(multiMatch[1]);
+    }
+    if (trackIds.length > 1) {
+        spotify_multi_track_fetch(trackIds);
+        return;
     }
 
     var spotifyUrlMatch = input.match(spotify_url_re);
