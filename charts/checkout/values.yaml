@@ -1,0 +1,6 @@
+# Cursor bridge sandbox fixture.
+service:
+  name: checkout-api
+resources:
+  limits:
+    memory: 512Mi
