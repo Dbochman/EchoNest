@@ -3,4 +3,4 @@ service:
   name: checkout-api
 resources:
   limits:
-    memory: 512Mi
+    memory: 768Mi
