@@ -1,0 +1,4 @@
+checkout-api:
+  resources:
+    limits:
+      memory: 768Mi
