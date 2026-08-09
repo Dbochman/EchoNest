@@ -42,7 +42,7 @@ Internet
 │                │                │
 │  ┌─────────────▼─────────────┐  │
 │  │  Docker Compose           │  │
-│  │  ├─ echonest_app (:5001)   │  │
+│  │  ├─ echonest_app (127.0.0.1:5001) │
 │  │  ├─ echonest_player        │  │
 │  │  └─ echonest_redis (:6379) │  │
 │  └───────────────────────────┘  │
@@ -59,14 +59,11 @@ Internet
 ## SSH Access
 
 ```bash
-# As deploy user via public IP
-ssh deploy@192.81.213.152
-
-# As deploy user via Tailscale (bypasses fail2ban/UFW)
-ssh deploy@100.92.192.62
+# Preferred: Tailscale-native SSH (bypasses public SSH and fail2ban)
+tailscale ssh deploy@andre
 ```
 
-**Note**: Root login is disabled. Tailscale provides backup SSH access if the public IP is blocked by fail2ban.
+**Note**: Root login and password authentication are disabled. Tailscale SSH is the primary administrative path, and key expiry is disabled for this trusted server. The DigitalOcean Recovery Console is the out-of-band fallback.
 
 ---
 
@@ -164,7 +161,7 @@ cat /etc/caddy/Caddyfile
 |------|---------|
 | `/opt/echonest/.env` | Environment variables (secrets) |
 | `/opt/echonest/local_config.yaml` | Application config |
-| `/opt/echonest/docker-compose.yaml` | Container orchestration |
+| `/opt/echonest/docker-compose.yaml` | Container orchestration; Flask binds only to `127.0.0.1:5001` |
 | `/etc/caddy/Caddyfile` | Reverse proxy config |
 
 ### Caddy Configuration
@@ -197,6 +194,20 @@ Key variables in `/opt/echonest/.env`:
 - `REDIS_PASSWORD=<password>`
 
 Generate a new API token: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
+
+`REDIS_PASSWORD` is mandatory; Compose intentionally has no default. Generate a strong replacement without printing it into logs, update `/opt/echonest/.env`, and recreate Redis, the app, and the player together.
+
+### Host Log Retention
+
+Install `ops/journald/echonest-retention.conf` as `/etc/systemd/journald.conf.d/echonest-retention.conf`. Persistent journald storage is capped at 512 MB with 1 GB reserved for the filesystem and a 14-day maximum retention period. After changing retention, vacuum archived journals and verify with `journalctl --disk-usage`.
+
+### SSH Abuse Controls
+
+Tailscale SSH is the only network SSH path. UFW permits port 22 only on `tailscale0` and blocks public SSH. Install `ops/fail2ban/echonest-sshd.local` as `/etc/fail2ban/jail.d/echonest-sshd.local`; the SSH jail is disabled because internet traffic cannot reach `sshd`. The DigitalOcean Recovery Console is the out-of-band fallback.
+
+### Redis Host Tuning
+
+Install `ops/sysctl/99-echonest.conf` as `/etc/sysctl.d/99-echonest.conf` so Redis background persistence can operate reliably under memory pressure.
 
 ### Slack Notifications
 

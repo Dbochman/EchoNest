@@ -19,7 +19,9 @@ services:
     # Security: password auth, protected mode
     # Note: ACL-based command restrictions require redis.conf file mount (see SECURITY.md)
     # Current config uses requirepass for authentication
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-changeme} --protected-mode yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env} --protected-mode yes
     # Redis only on internal network - no internet access
     networks:
       - echonest_internal
@@ -48,7 +50,7 @@ services:
         reservations:
           memory: 128M
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping"]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -72,13 +74,13 @@ services:
       - echonest_network
       - echonest_internal
     ports:
-      - "5001:5000"
+      - "127.0.0.1:5001:5000"
     env_file:
       - .env
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     volumes:
       - ./local_config.yaml:/app/local_config.yaml:ro
       - ./play_logs:/app/play_logs
@@ -131,7 +133,7 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     volumes:
       - ./local_config.yaml:/app/local_config.yaml:ro
       - ./play_logs:/app/play_logs

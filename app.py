@@ -23,7 +23,7 @@ import psycopg2
 import spotipy.oauth2
 import spotipy
 
-from flask import Flask, request, render_template, session, redirect, jsonify, make_response, Response, stream_with_context
+from flask import Flask, request, render_template, session, redirect, jsonify, make_response, Response, stream_with_context, abort
 from flask_assets import Environment, Bundle
 
 from config import CONF

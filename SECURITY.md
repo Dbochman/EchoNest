@@ -21,36 +21,16 @@ The deployment has been hardened following industry best practices including [OW
 | `PasswordAuthentication` | `no` | Key-only authentication |
 | `PubkeyAuthentication` | `yes` | SSH keys required |
 
-### 2. Fail2ban (Critical)
+### 2. SSH Abuse Controls (Critical)
 
-**Risk**: Brute force SSH attacks from botnets.
+**Risk**: Brute force SSH attacks from botnets and unbounded firewall rule growth.
 
 **Implementation**:
-- Monitors `/var/log/auth.log` for failed login attempts
-- Bans IP addresses via UFW firewall after 3 failed attempts
-- **Ban duration: 365 days**
-
-```ini
-# /etc/fail2ban/jail.local
-[sshd]
-enabled = true
-maxretry = 3
-bantime = 31536000  # 365 days
-findtime = 86400    # 24 hour window
-banaction = ufw
-```
-
-**Commands**:
-```bash
-# Check status
-sudo fail2ban-client status sshd
-
-# Unban an IP (if needed)
-sudo fail2ban-client set sshd unbanip <IP>
-
-# View banned IPs
-sudo fail2ban-client get sshd banned
-```
+- Public SSH is blocked by UFW.
+- Port 22 is accepted only on `tailscale0`.
+- Tailscale SSH applies tailnet identity and access policy before reaching the host.
+- The Fail2ban SSH jail is disabled because public traffic cannot reach `sshd`; this avoids persistent per-address UFW rule growth.
+- The DigitalOcean Recovery Console is the out-of-band fallback.
 
 ### 3. UFW Firewall (Critical)
 
@@ -59,9 +39,10 @@ sudo fail2ban-client get sshd banned
 **Implementation**:
 | Port | Service | Access |
 |------|---------|--------|
-| 22/tcp | SSH | Allowed |
+| 22/tcp | SSH | Allowed only on `tailscale0` |
 | 80/tcp | HTTP | Allowed (redirects to HTTPS) |
 | 443/tcp | HTTPS | Allowed |
+| 5001/tcp | Flask upstream | Bound to `127.0.0.1` only |
 | 6379 | Redis | **Blocked** (internal only) |
 
 ### 4. Tailscale VPN (Critical)
@@ -76,13 +57,12 @@ sudo fail2ban-client get sshd banned
 
 ```bash
 # Access via Tailscale (bypasses fail2ban/UFW)
-ssh deploy@100.92.192.62
+tailscale ssh deploy@andre
 
-# Access via public IP (subject to fail2ban)
-ssh deploy@192.81.213.152
+# Out-of-band recovery uses the DigitalOcean Recovery Console.
 ```
 
-**Lesson learned**: The previous droplet was permanently locked out when fail2ban (365-day ban) combined with `PasswordAuthentication no` made recovery impossible, even via DO web console. Tailscale prevents this scenario.
+**Lesson learned**: The previous droplet was permanently locked out when fail2ban (365-day ban) combined with `PasswordAuthentication no` made recovery impossible, even via DO web console. Tailscale SSH is the primary administrative path. Disable Tailscale key expiry for this trusted server and keep the DigitalOcean recovery console as the out-of-band fallback.
 
 ### 5. Automatic Security Updates (High)
 
@@ -196,7 +176,9 @@ cap_drop:
 
 ```yaml
 # docker-compose.yaml
-command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD} --protected-mode yes
+environment:
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env} --protected-mode yes
 ```
 
 ```python
@@ -204,7 +186,9 @@ command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --require
 redis.StrictRedis(host=..., port=..., password=CONF.REDIS_PASSWORD, ...)
 ```
 
-**Defense in Depth**: Even though Redis port 6379 is blocked by UFW firewall, authentication provides an additional security layer against:
+The Compose configuration has no fallback password; deployment fails if `REDIS_PASSWORD` is missing. Rotate the production value periodically and whenever a placeholder or disclosure is discovered.
+
+**Defense in Depth**: Even though Redis port 6379 is isolated on an internal Docker network, authentication provides an additional security layer against:
 - Firewall misconfiguration
 - Internal network compromise
 - Container escape scenarios
@@ -496,7 +480,7 @@ docker compose up -d --build
 | `app.py` | `require_api_token` decorator, `/api/` in SAFE_PARAM_PATHS, 9 REST API endpoints (queue + Spotify Connect) |
 | `config.py` | `ECHONEST_API_TOKEN`, `ECHONEST_SPOTIFY_EMAIL` in ENV_OVERRIDES |
 | `/etc/ssh/sshd_config` | Disabled root login and password auth |
-| `/etc/fail2ban/jail.local` | SSH jail with 365-day ban |
+| `/etc/fail2ban/jail.d/echonest-sshd.local` | Disables the unnecessary SSH jail after public SSH is blocked |
 
 ---
 
