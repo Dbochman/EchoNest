@@ -17,6 +17,9 @@ BUILD_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def build():
+    subprocess.check_call([
+        sys.executable, os.path.join(ROOT, "tools", "check_tls_bundle.py"),
+    ])
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", "EchoNest Sync",

@@ -110,6 +110,39 @@ Precedence: CLI args > env vars > config file > keyring.
 
 ## Building
 
+### Certificate trust in packaged apps
+
+The desktop package requires `certifi>=2026.10.19` following the
+[eMudhra incident](https://github.com/certifi/python-certifi/releases/tag/2026.10.19).
+Install the package's dependencies into the build interpreter before packaging.
+Both builders run an offline check of the certifi release and actual CA file;
+macOS also checks the copied bundle before signing. This check rejects known
+incident-excluded roots, but is not a general-purpose revocation service.
+
+Updating system Python or Homebrew does **not** replace the CA file inside an
+already installed `.app` or `.exe`. Rebuild and reinstall the app, retain its
+existing user configuration, and test the packaged bundle against all incident
+canaries plus normal controls before treating that installation as remediated.
+Do not replace files inside a signed app in place or disable TLS verification.
+Changing this source does not repair an existing installation. The packaged
+executable supports a credential-free diagnostic, before loading GUI/config or
+Keychain code:
+
+```bash
+"/Applications/EchoNest Sync.app/Contents/MacOS/EchoNest Sync" --tls-self-test
+```
+
+It makes TLS handshakes only (no HTTP requests) to twelve public incident
+canaries and two normal controls. Exit 0 means expected rejection plus working
+controls; 1 means observed exposure; 2 means inconclusive. Run on an available
+network. It does not start playback, register startup items, or modify trust.
+
+For isolated macOS builds, pass `--distpath` and `--workpath` pointing inside a
+fresh temporary directory. The app version is taken from installed project
+metadata rather than the historical plist template. A non-Xcode Python with
+Tk support is required; `/usr/local/bin/python3` below is a historical example,
+not a required location. The October 2026 Mini build uses Homebrew Python 3.14.
+
 ### macOS (.app bundle)
 
 ```bash

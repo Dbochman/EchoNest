@@ -25,21 +25,36 @@ SKIP_SPOTIFY_PREFETCH=1 python3 -m pytest tests/ -v
 
 ### macOS (.app + DMG)
 
-Must use system Python (`/usr/local/bin/python3`), NOT Xcode Python.
+Use a non-Xcode Python with working Tk support and install `.[app,mac]` into
+that build environment. `/usr/local/bin/python3` was the original interpreter;
+it is absent on the current Mini, where Homebrew Python 3.14 with python-tk is
+used in an isolated virtualenv. Do not upgrade machine-wide Python to build.
 
 ```bash
 cd echonest-sync
 
+# With the prepared build virtualenv activated:
 # 1. Build the .app bundle
-/usr/local/bin/python3 build/macos/build_app.py
+python build/macos/build_app.py
 
 # 2. Build the DMG installer
-/usr/local/bin/python3 build/macos/build_dmg.py
+python build/macos/build_dmg.py
 
 # Output: dist/EchoNest-Sync.dmg
 ```
 
-**Rebuilding**: The codesigned `.app` has immutable files. You must `sudo rm -rf "dist/EchoNest Sync.app"` before rebuilding.
+**Rebuilding**: Prefer a fresh temporary output directory; do not delete an
+existing signed app to make room for a build. `build_app.py` accepts `--distpath`
+and `--workpath` (the latter also keeps the generated spec out of the checkout).
+Keep the previous installed app as a rollback artifact when replacing it.
+
+Both builders require certifi 2026.10.19 or newer and check the actual source
+bundle offline. macOS checks the copied CA file before signing and derives the
+app version from installed project metadata, not the historical plist template.
+Run the packaged executable with `--tls-self-test` after building and installing:
+it runs before GUI/config/keyring imports, makes only public TLS handshakes, and
+must reject all twelve canaries while accepting both normal controls. Exit 1 is
+exposure; exit 2 is inconclusive. Do not treat either as a successful test.
 
 **Installing locally**: Open the DMG, drag to Applications, then clear quarantine:
 ```bash

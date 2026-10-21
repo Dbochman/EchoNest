@@ -272,7 +272,7 @@ Optional feature: users link their Google account so songs added via the API use
 
 ### Packaging
 
-- `build/macos/build_app.py` — PyInstaller `.app` bundle (`icon.icns`), auto ad-hoc codesigned. Run with `/usr/local/bin/python3` (not Xcode python).
+- `build/macos/build_app.py` — PyInstaller `.app` bundle (`icon.icns`), auto ad-hoc codesigned. Use an isolated non-Xcode Python environment with Tk and `.[app,mac]`; see `echonest-sync/CLAUDE.md` for TLS preflight and packaged self-test requirements.
 - `build/windows/build_exe.py` — PyInstaller `.exe` (onefile, `icon.ico`)
 - `.github/workflows/echonest-sync.yml` — CI test matrix + build/release on `sync-v*` tags
 

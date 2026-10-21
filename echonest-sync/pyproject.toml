@@ -9,6 +9,7 @@ description = "Desktop agent that syncs your local Spotify with an EchoNest serv
 requires-python = ">=3.9"
 dependencies = [
     "requests",
+    "certifi>=2026.10.19",
     "sseclient-py",
     "click",
     "pyyaml",
