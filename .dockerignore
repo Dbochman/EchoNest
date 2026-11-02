@@ -4,6 +4,8 @@
 __pycache__
 *.pyc
 *.pyo
+# EchoNest does not execute PHP; do not package legacy debugging assets.
+**/*.php
 .idea
 .helios
 node_modules
@@ -11,6 +13,8 @@ play_logs
 oauth_creds
 dump.rdb
 local_config.yaml
+.env
+.env.*
 *.md
 .dockerignore
 Dockerfile

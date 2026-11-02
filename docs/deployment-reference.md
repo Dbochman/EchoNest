@@ -69,6 +69,29 @@ tailscale ssh deploy@andre
 
 ## Common Operations
 
+### Build-context hygiene
+
+The legacy Spotify debugging asset `static/js/xhr/json/auth.php` has been
+removed. EchoNest has no PHP runtime; keep PHP source out of public static
+assets and retain the `**/*.php` exclusion in `.dockerignore`. The build context
+also excludes `.env` and `.env.*`; Compose still reads the server's runtime
+environment file outside the image.
+
+The deployment rsync does not delete destination-only files. For removals,
+verify and remove the specific stale production file before rebuilding; do not
+add a broad `--delete` that could remove server-owned configuration or data.
+App/player filesystems are read-only, so image contents must be removed through
+a rebuild and container recreation, not an in-place edit or a writable remount.
+Use `--no-deps` when recreating only these services so Redis is left running.
+
+The October 21, 2026 cleanup rebuilt and recreated only `echonest` and `player`.
+Image preflight checks verified PHP/static-source and runtime-config exclusions,
+Python dependency consistency, and runtime imports. Origin and public checks
+returned 404 for the retired asset and 200 for health; origin login and the main
+JavaScript asset also returned 200. Both services kept read-only filesystems and
+their existing persistent mounts; Redis's container ID and start time did not
+change. The removed source file and previous images were retained for rollback.
+
 ### Check Service Status
 
 ```bash
